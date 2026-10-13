@@ -96,7 +96,7 @@ COLUMN_MAPPING_USO_TEC = {
     "organization_id": "org_id",
     "identificador_de_organizacion": "org_id",
     "id_organizacion": "org_id",
-    "org_id": "org_id",
+    "Identificador de organización": "org_id",
 
     "organization_name": "organizacion",
     "organizacion": "organizacion",
@@ -108,31 +108,31 @@ COLUMN_MAPPING_USO_TEC = {
     "fecha_fin": "fecha",
 
     # Tecnologías
-    "autotrac": "autotrac",
+    "aAutoTrac™ Activo": "autotrac",
     "autotrac_pct": "autotrac",
     "autotrac_porcentaje": "autotrac",
 
-    "turn_automation": "turn_automation",
+    "Automatización de maniobras AutoTrac™ Activo": "turn_automation",
     "turn_automation_pct": "turn_automation",
     "turn_automation_porcentaje": "turn_automation",
 
     "autopath": "autopath",
-    "autopath_pct": "autopath",
+    "AutoPath™ Activo": "autopath",
     "autopath_porcentaje": "autopath",
 
     "implement_guidance": "implement_guidance",
-    "implement_guidance_pct": "implement_guidance",
+    "Guiado pasivo de implemento AutoTrac™ Activo": "implement_guidance",
     "implement_guidance_porcentaje": "implement_guidance",
 
     "efficiency_manager": "efficiency_manager",
     "efficiency_manager_pct": "efficiency_manager",
     "ef_manager": "efficiency_manager",
-    "ef_manager_pct": "efficiency_manager",
+    "Tiempo de activación de Efficiency Manager™ Automático": "efficiency_manager",
 
     "field_cruise": "field_cruise",
     "field_cruise_pct": "field_cruise",
     "f_cruise": "field_cruise",
-    "f_cruise_pct": "field_cruise",
+    "FieldCruise™ Activado": "field_cruise",
 }
 
 
