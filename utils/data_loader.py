@@ -11,7 +11,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 CLIENTES_FILE = BASE_DIR / "data" / "base_de_clientes.csv"
 OCIOSOS_FILE = BASE_DIR / "data" / "motivos_ociosos.csv"
-USO_TEC_FILE = BASE_DIR / "data" / "datos_consolidados_conci.csv"
+USO_TEC_URL = (
+    "https://raw.githubusercontent.com/"
+    "s-dagatti/uso-tec-v2/main/"
+    "datos_consolidados_conci.csv"
+)
 
 
 # =====================================================
@@ -111,22 +115,30 @@ def cargar_clientes():
 
 def cargar_uso_tecnologia():
 
-    df = pd.read_csv(
-        USO_TEC_FILE,
-        low_memory=False
-    )
+    try:
 
-    df.columns = (
-        df.columns
-        .str.strip()
-    )
+        df = pd.read_csv(
+            USO_TEC_URL,
+            low_memory=False
+        )
 
-    df.rename(
-        columns=COLUMN_MAPPING_USO_TEC,
-        inplace=True
-    )
+        df.columns = (
+            df.columns
+            .str.strip()
+        )
 
-    return df
+        df.rename(
+            columns=COLUMN_MAPPING_USO_TEC,
+            inplace=True
+        )
+
+        return df
+
+    except Exception as e:
+
+        raise Exception(
+            f"Error leyendo uso-tec-v2: {e}"
+        )
 
 
 def cargar_ociosidad():
