@@ -241,6 +241,7 @@ def normalizar_nombre_columna(nombre):
 
 
 def normalizar_encabezados(df, mapping):
+
     df = df.copy()
 
     df.columns = [
@@ -248,9 +249,10 @@ def normalizar_encabezados(df, mapping):
         for columna in df.columns
     ]
 
-    df = df.rename(columns=mapping)
-
-    print(uso_tec.columns.tolist())
+    df.rename(
+        columns=mapping,
+        inplace=True
+    )
 
     return df
 
