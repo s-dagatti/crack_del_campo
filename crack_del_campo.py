@@ -32,14 +32,6 @@ def load_data():
 
 df = load_data()
 
-st.subheader("DEBUG")
-
-st.write("Columnas encontradas:")
-
-st.write(df.columns.tolist())
-
-st.stop()
-
 # =====================================================
 # SIDEBAR
 # =====================================================
@@ -47,7 +39,7 @@ st.stop()
 st.sidebar.header("Filtros")
 
 sucursales = sorted(
-    df["sucursal_x"].dropna().unique()
+    df["sucursal"].dropna().unique()
 )
 
 clientes = sorted(
@@ -74,7 +66,7 @@ df_filtrado = df.copy()
 if sucursal:
 
     df_filtrado = df_filtrado[
-        df_filtrado["sucursal_x"].isin(sucursal)
+        df_filtrado["sucursal"].isin(sucursal)
     ]
 
 if cliente:
@@ -160,7 +152,7 @@ with tab_general:
                 [
                     "operario",
                     "cliente",
-                    "sucursal_x",
+                    "sucursal",
                     "autotrac",
                     "score_basic"
                 ]
@@ -226,7 +218,7 @@ with tab_general:
                 [
                     "operario",
                     "cliente",
-                    "sucursal_x",
+                    "sucursal",
                     "autotrac",
                     "turn_automation",
                     "ocio_controlable",
