@@ -198,8 +198,8 @@ COLUMN_MAPPING_OCIOSIDAD = {
     "utilizacion_ralenti": "ralenti",
 
     # Fechas, si están disponibles
-    "fecha_inicio": "fecha_inicio",
-    "fecha_fin": "fecha_fin",
+    "fecha_de_inicio": "fecha_inicio",
+    "fecha_de_terminacion": "fecha_fin",
 }
 
 
@@ -555,10 +555,24 @@ def construir_dataframe_maestro():
     # Unión con el histórico de motivos ociosos.
     df = df.merge(
         ociosidad[columnas_ociosidad],
-        on="numero_serie",
-        how="left",
+        on=[
+            "numero_serie",
+            "fecha_inicio",
+            "fecha_fin"
+        ],
+        how="left"
     )
 
+    columnas_ociosidad = [
+        "numero_serie",
+        "fecha_inicio",
+        "fecha_fin",
+        "cancelada",
+        "sin_definir",
+        "ignorada",
+        "ocio_controlable",
+        "score_ociosidad",
+    ]
     # =================================================
     # UNIFICACIÓN DE COLUMNAS DUPLICADAS
     # =================================================
@@ -719,6 +733,22 @@ def construir_dataframe_maestro():
     
     if "operario" not in df.columns:
         df["operario"] = "Sin asignar"
+
+    print(
+        df[
+            [
+                "numero_serie",
+                "fecha_inicio",
+                "fecha_fin",
+                "autotrac",
+                "turn_automation",
+                "autopath",
+                "implement_guidance",
+                "efficiency_manager",
+                "field_cruise"
+            ]
+        ].head(20)
+    )
 
     return df
 
