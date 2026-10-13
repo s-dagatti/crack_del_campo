@@ -32,6 +32,14 @@ def load_data():
 
 df = load_data()
 
+st.subheader("DEBUG")
+
+st.write("Columnas encontradas:")
+
+st.write(df.columns.tolist())
+
+st.stop()
+
 # =====================================================
 # SIDEBAR
 # =====================================================
