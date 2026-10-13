@@ -1,36 +1,176 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 from utils.data_loader import cargar_datos
 from utils.metrics import calcular_scores
 
+
 # =====================================================
-# CONFIG
+# CONFIGURACIÓN
 # =====================================================
 
 st.set_page_config(
     page_title="Crack del Campo",
     page_icon="🚜",
-    layout="wide"
+    layout="wide",
 )
 
 st.title("🚜 Crack del Campo FY27")
 st.caption("Seguimiento de participantes - Tractores")
 
+
 # =====================================================
-# DATOS
+# FUNCIONES
 # =====================================================
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
+    datos = cargar_datos()
+    datos = calcular_scores(datos)
 
-    df = cargar_datos()
-    df = calcular_scores(df)
-
-    return df
+    return datos
 
 
-df = load_data()
+def promedio_seguro(df, columna):
+    if df.empty or columna not in df.columns:
+        return 0.0
+
+    valores = pd.to_numeric(
+        df[columna],
+        errors="coerce",
+    )
+
+    resultado = valores.mean()
+
+    if pd.isna(resultado):
+        return 0.0
+
+    return float(resultado)
+
+
+def participantes_unicos(df):
+    """
+    Construye una fila por número de serie para evitar que
+    el histórico semanal duplique participantes en el ranking.
+
+    Por ahora conserva el registro más reciente disponible.
+    """
+
+    if df.empty:
+        return df.copy()
+
+    resultado = df.copy()
+
+    columnas_fecha = [
+        "fecha",
+        "fecha_de_terminacion",
+        "fecha_fin",
+        "fecha_de_inicio",
+        "fecha_inicio",
+    ]
+
+    columna_fecha = next(
+        (
+            columna
+            for columna in columnas_fecha
+            if columna in resultado.columns
+        ),
+        None,
+    )
+
+    if columna_fecha:
+        resultado[columna_fecha] = pd.to_datetime(
+            resultado[columna_fecha],
+            errors="coerce",
+            dayfirst=True,
+        )
+
+        resultado = resultado.sort_values(
+            columna_fecha,
+            ascending=False,
+        )
+
+    return resultado.drop_duplicates(
+        subset=["numero_serie"],
+        keep="first",
+    )
+
+
+def mostrar_tabla_vacia(mensaje):
+    st.info(mensaje)
+
+
+# =====================================================
+# CARGA DE DATOS
+# =====================================================
+
+try:
+    df = load_data()
+
+except Exception as error:
+    st.error(
+        "No se pudieron cargar las fuentes de datos del tablero."
+    )
+
+    with st.expander("Detalle técnico"):
+        st.exception(error)
+
+    st.stop()
+
+
+columnas_obligatorias = [
+    "numero_serie",
+    "sucursal",
+    "cliente",
+    "operario",
+    "categoria",
+    "autotrac",
+    "score_basic",
+    "score_elite",
+]
+
+columnas_faltantes = [
+    columna
+    for columna in columnas_obligatorias
+    if columna not in df.columns
+]
+
+if columnas_faltantes:
+    st.error(
+        "Faltan columnas necesarias para mostrar el tablero: "
+        + ", ".join(columnas_faltantes)
+    )
+
+    with st.expander("Columnas disponibles"):
+        st.write(df.columns.tolist())
+
+    st.stop()
+
+
+# =====================================================
+# NORMALIZACIÓN DE CATEGORÍAS
+# =====================================================
+
+df["categoria"] = (
+    df["categoria"]
+    .fillna("SIN CATEGORÍA")
+    .astype(str)
+    .str.strip()
+    .str.upper()
+)
+
+df["categoria"] = df["categoria"].replace(
+    {
+        "BASE": "BASIC",
+        "BÁSICO": "BASIC",
+        "BASICO": "BASIC",
+        "GUIADO BÁSICO": "BASIC",
+        "GUIADO BASICO": "BASIC",
+        "AVANZADO": "ELITE",
+        "GUIADO AVANZADO": "ELITE",
+    }
+)
+
 
 # =====================================================
 # SIDEBAR
@@ -39,41 +179,139 @@ df = load_data()
 st.sidebar.header("Filtros")
 
 sucursales = sorted(
-    df["sucursal"].dropna().unique()
+    df["sucursal"]
+    .dropna()
+    .astype(str)
+    .unique()
+    .tolist()
 )
 
-clientes = sorted(
-    df["cliente"].dropna().unique()
-)
-
-sucursal = st.sidebar.multiselect(
+sucursales_seleccionadas = st.sidebar.multiselect(
     "Sucursal",
     options=sucursales,
-    default=sucursales
+    default=sucursales,
 )
 
-cliente = st.sidebar.multiselect(
-    "Cliente",
-    options=clientes
+# Primero filtra sucursales para que el selector de clientes
+# muestre solamente clientes asociados a ellas.
+df_sidebar = df.copy()
+
+if sucursales_seleccionadas:
+    df_sidebar = df_sidebar[
+        df_sidebar["sucursal"].isin(
+            sucursales_seleccionadas
+        )
+    ]
+
+clientes = sorted(
+    df_sidebar["cliente"]
+    .dropna()
+    .astype(str)
+    .unique()
+    .tolist()
 )
+
+clientes_seleccionados = st.sidebar.multiselect(
+    "Cliente",
+    options=clientes,
+    default=[],
+)
+
 
 # =====================================================
-# FILTROS
+# FILTRO DE FECHAS
+# =====================================================
+
+columnas_fecha_posibles = [
+    "fecha",
+    "fecha_de_terminacion",
+    "fecha_fin",
+]
+
+columna_fecha = next(
+    (
+        columna
+        for columna in columnas_fecha_posibles
+        if columna in df.columns
+    ),
+    None,
+)
+
+periodo_seleccionado = None
+
+if columna_fecha:
+    df[columna_fecha] = pd.to_datetime(
+        df[columna_fecha],
+        errors="coerce",
+        dayfirst=True,
+    )
+
+    fecha_minima = df[columna_fecha].min()
+    fecha_maxima = df[columna_fecha].max()
+
+    if (
+        pd.notna(fecha_minima)
+        and pd.notna(fecha_maxima)
+    ):
+        periodo_seleccionado = st.sidebar.date_input(
+            "Periodo",
+            value=(
+                fecha_minima.date(),
+                fecha_maxima.date(),
+            ),
+            min_value=fecha_minima.date(),
+            max_value=fecha_maxima.date(),
+        )
+
+
+# =====================================================
+# APLICACIÓN DE FILTROS
 # =====================================================
 
 df_filtrado = df.copy()
 
-if sucursal:
-
+if sucursales_seleccionadas:
     df_filtrado = df_filtrado[
-        df_filtrado["sucursal"].isin(sucursal)
+        df_filtrado["sucursal"].isin(
+            sucursales_seleccionadas
+        )
     ]
 
-if cliente:
+if clientes_seleccionados:
+    df_filtrado = df_filtrado[
+        df_filtrado["cliente"].isin(
+            clientes_seleccionados
+        )
+    ]
+
+if (
+    columna_fecha
+    and periodo_seleccionado
+    and isinstance(periodo_seleccionado, tuple)
+    and len(periodo_seleccionado) == 2
+):
+    fecha_desde = pd.Timestamp(
+        periodo_seleccionado[0]
+    )
+
+    fecha_hasta = (
+        pd.Timestamp(periodo_seleccionado[1])
+        + pd.Timedelta(days=1)
+        - pd.Timedelta(microseconds=1)
+    )
 
     df_filtrado = df_filtrado[
-        df_filtrado["cliente"].isin(cliente)
+        df_filtrado[columna_fecha].between(
+            fecha_desde,
+            fecha_hasta,
+            inclusive="both",
+        )
     ]
+
+st.sidebar.caption(
+    f"{df_filtrado['numero_serie'].nunique()} máquinas seleccionadas"
+)
+
 
 # =====================================================
 # TABS PRINCIPALES
@@ -83,33 +321,35 @@ tab_general, tab_informe, tab_clientes = st.tabs(
     [
         "📊 Tablero General",
         "📄 Generación Informe",
-        "👥 Datos Clientes"
+        "👥 Datos Clientes",
     ]
 )
+
 
 # =====================================================
 # TAB GENERAL
 # =====================================================
 
 with tab_general:
-
     basic_tab, elite_tab = st.tabs(
         [
             "🚜 Basic",
-            "🏆 Elite"
+            "🏆 Elite",
         ]
     )
 
-    # ==========================================
+    # =================================================
     # BASIC
-    # ==========================================
+    # =================================================
 
     with basic_tab:
+        basic_historico = df_filtrado[
+            df_filtrado["categoria"] == "BASIC"
+        ].copy()
 
-        basic = df_filtrado[
-            df_filtrado["categoria"].str.upper()
-            == "BASIC"
-        ]
+        basic = participantes_unicos(
+            basic_historico
+        )
 
         st.subheader("Categoría Basic")
 
@@ -117,60 +357,101 @@ with tab_general:
 
         c1.metric(
             "Participantes",
-            basic["numero_serie"].nunique()
+            basic["numero_serie"].nunique(),
         )
 
         c2.metric(
             "Clientes",
-            basic["cliente"].nunique()
+            basic["cliente"].nunique(),
         )
 
         c3.metric(
-            "AutoTrac Promedio",
-            f"{basic['autotrac'].mean():.1f}%"
+            "AutoTrac promedio",
+            f"{promedio_seguro(basic, 'autotrac'):.1f}%",
         )
 
         c4.metric(
             "Score Basic",
-            f"{basic['score_basic'].mean():.1f}"
+            f"{promedio_seguro(basic, 'score_basic'):.1f}",
         )
 
         st.divider()
-
-        ranking_basic = (
-            basic
-            .sort_values(
-                "score_basic",
-                ascending=False
-            )
-        )
-
         st.subheader("Ranking Basic")
 
-        st.dataframe(
-            ranking_basic[
+        if basic.empty:
+            mostrar_tabla_vacia(
+                "No hay participantes Basic para los filtros seleccionados."
+            )
+
+        else:
+            ranking_basic = (
+                basic
+                .sort_values(
+                    "score_basic",
+                    ascending=False,
+                )
+                .reset_index(drop=True)
+            )
+
+            ranking_basic.insert(
+                0,
+                "posición",
+                range(
+                    1,
+                    len(ranking_basic) + 1,
+                ),
+            )
+
+            tabla_basic = ranking_basic[
                 [
+                    "posición",
                     "operario",
                     "cliente",
                     "sucursal",
+                    "numero_serie",
                     "autotrac",
-                    "score_basic"
+                    "score_basic",
                 ]
-            ],
-            use_container_width=True,
-            hide_index=True
-        )
+            ].copy()
 
-    # ==========================================
+            tabla_basic = tabla_basic.rename(
+                columns={
+                    "posición": "Posición",
+                    "operario": "Operario",
+                    "cliente": "Cliente",
+                    "sucursal": "Sucursal",
+                    "numero_serie": "N.º de serie",
+                    "autotrac": "AutoTrac (%)",
+                    "score_basic": "Score Basic",
+                }
+            )
+
+            st.dataframe(
+                tabla_basic,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "AutoTrac (%)": st.column_config.NumberColumn(
+                        format="%.1f%%"
+                    ),
+                    "Score Basic": st.column_config.NumberColumn(
+                        format="%.1f"
+                    ),
+                },
+            )
+
+    # =================================================
     # ELITE
-    # ==========================================
+    # =================================================
 
     with elite_tab:
+        elite_historico = df_filtrado[
+            df_filtrado["categoria"] == "ELITE"
+        ].copy()
 
-        elite = df_filtrado[
-            df_filtrado["categoria"].str.upper()
-            == "ELITE"
-        ]
+        elite = participantes_unicos(
+            elite_historico
+        )
 
         st.subheader("Categoría Elite")
 
@@ -178,96 +459,163 @@ with tab_general:
 
         c1.metric(
             "Participantes",
-            elite["numero_serie"].nunique()
+            elite["numero_serie"].nunique(),
         )
 
         c2.metric(
             "Score Elite",
-            f"{elite['score_elite'].mean():.1f}"
+            f"{promedio_seguro(elite, 'score_elite'):.1f}",
         )
 
         c3.metric(
             "AutoTrac",
-            f"{elite['autotrac'].mean():.1f}%"
+            f"{promedio_seguro(elite, 'autotrac'):.1f}%",
         )
 
         c4.metric(
             "Turn Automation",
-            f"{elite['turn_automation'].mean():.1f}%"
+            f"{promedio_seguro(elite, 'turn_automation'):.1f}%",
         )
 
         c5.metric(
-            "Ocio Controlable",
-            f"{elite['ocio_controlable'].mean():.1f}%"
+            "Ocio controlable",
+            f"{promedio_seguro(elite, 'ocio_controlable'):.1f}%",
         )
 
         st.divider()
-
-        ranking_elite = (
-            elite
-            .sort_values(
-                "score_elite",
-                ascending=False
-            )
-        )
-
         st.subheader("Ranking Elite")
 
-        st.dataframe(
-            ranking_elite[
+        if elite.empty:
+            mostrar_tabla_vacia(
+                "No hay participantes Elite para los filtros seleccionados."
+            )
+
+        else:
+            ranking_elite = (
+                elite
+                .sort_values(
+                    "score_elite",
+                    ascending=False,
+                )
+                .reset_index(drop=True)
+            )
+
+            ranking_elite.insert(
+                0,
+                "posición",
+                range(
+                    1,
+                    len(ranking_elite) + 1,
+                ),
+            )
+
+            tabla_elite = ranking_elite[
                 [
+                    "posición",
                     "operario",
                     "cliente",
                     "sucursal",
+                    "numero_serie",
                     "autotrac",
                     "turn_automation",
+                    "autopath",
+                    "implement_guidance",
+                    "efficiency_manager",
+                    "field_cruise",
                     "ocio_controlable",
-                    "score_elite"
+                    "score_elite",
                 ]
-            ],
-            use_container_width=True,
-            hide_index=True
-        )
+            ].copy()
+
+            tabla_elite = tabla_elite.rename(
+                columns={
+                    "posición": "Posición",
+                    "operario": "Operario",
+                    "cliente": "Cliente",
+                    "sucursal": "Sucursal",
+                    "numero_serie": "N.º de serie",
+                    "autotrac": "AutoTrac (%)",
+                    "turn_automation": "Turn Automation (%)",
+                    "autopath": "AutoPath (%)",
+                    "implement_guidance": "Implement Guidance (%)",
+                    "efficiency_manager": "Efficiency Manager (%)",
+                    "field_cruise": "Field Cruise (%)",
+                    "ocio_controlable": "Ocio controlable (%)",
+                    "score_elite": "Score Elite",
+                }
+            )
+
+            st.dataframe(
+                tabla_elite,
+                use_container_width=True,
+                hide_index=True,
+            )
+
 
 # =====================================================
-# TAB INFORMES
+# TAB INFORME
 # =====================================================
 
 with tab_informe:
-
     st.info(
         "Próximamente: generación automática de informes."
     )
 
+
 # =====================================================
-# TAB CLIENTES
+# TAB DATOS DE CLIENTES
 # =====================================================
 
 with tab_clientes:
-
     basic_clientes, elite_clientes = st.tabs(
         [
             "Basic",
-            "Elite"
+            "Elite",
         ]
     )
 
+    columnas_clientes = [
+        columna
+        for columna in [
+            "operario",
+            "cliente",
+            "sucursal",
+            "numero_serie",
+            "organizacion",
+            "org_id",
+            "categoria",
+        ]
+        if columna in df_filtrado.columns
+    ]
+
     with basic_clientes:
+        datos_basic = (
+            df_filtrado[
+                df_filtrado["categoria"] == "BASIC"
+            ]
+            .drop_duplicates(
+                subset=["numero_serie"]
+            )
+        )
 
         st.dataframe(
-            df_filtrado[
-                df_filtrado["categoria"].str.upper()
-                == "BASIC"
-            ],
-            use_container_width=True
+            datos_basic[columnas_clientes],
+            use_container_width=True,
+            hide_index=True,
         )
 
     with elite_clientes:
+        datos_elite = (
+            df_filtrado[
+                df_filtrado["categoria"] == "ELITE"
+            ]
+            .drop_duplicates(
+                subset=["numero_serie"]
+            )
+        )
 
         st.dataframe(
-            df_filtrado[
-                df_filtrado["categoria"].str.upper()
-                == "ELITE"
-            ],
-            use_container_width=True
+            datos_elite[columnas_clientes],
+            use_container_width=True,
+            hide_index=True,
         )
