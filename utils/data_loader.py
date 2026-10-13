@@ -529,6 +529,29 @@ def cargar_uso_tecnologia():
         .agg(agregaciones)
     )
 
+    print("COLUMNAS USO TEC")
+    print(df.columns.tolist())
+    
+    print(
+        df.head(10)
+    )
+
+    print(
+        df[
+            [
+                "numero_serie",
+                "fecha_inicio",
+                "fecha_fin",
+                "autotrac",
+                "turn_automation",
+                "autopath",
+                "implement_guidance",
+                "efficiency_manager",
+                "field_cruise"
+            ]
+        ].head(20)
+    )
+
     return df
 
 
