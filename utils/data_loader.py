@@ -236,7 +236,6 @@ def construir_dataframe_maestro():
     print(OCIOSOS_FILE.exists())
     
     print(USO_TEC_URL)
-    print(USO_TEC_URL.exists())
 
     clientes = cargar_clientes()
 
