@@ -259,6 +259,15 @@ def construir_dataframe_maestro():
     # merge clientes + uso tec
     # ------------------------------
 
+    print("CLIENTES")
+    print(clientes.columns.tolist())
+    
+    print("USO TEC")
+    print(uso_tec.columns.tolist())
+    
+    print("OCIOSIDAD")
+    print(ociosidad.columns.tolist())
+
     df = clientes.merge(
 
         uso_tec,
