@@ -25,9 +25,7 @@ USO_TEC_URL = (
 
 
 # =====================================================
-# ALIAS DE COLUMNAS
-# Los nombres se comparan después de normalizarlos:
-# minúsculas, sin tildes y con guiones bajos.
+# MAPEO BASE DE CLIENTES
 # =====================================================
 
 COLUMN_MAPPING_CLIENTES = {
@@ -64,9 +62,9 @@ COLUMN_MAPPING_CLIENTES = {
     # Operario
     "nombre_operario": "operario",
     "nombre_del_operario": "operario",
+    "nombre_completo_del_operador": "operario",
     "operario": "operario",
     "operador": "operario",
-    "nombre_completo_del_operador": "operario",
 
     # Teléfono
     "telefono": "telefono",
@@ -83,11 +81,12 @@ COLUMN_MAPPING_CLIENTES = {
 }
 
 
-COLUMN_MAPPING_USO_TEC = {
-    # =================================================
-    # IDENTIFICACIÓN
-    # =================================================
+# =====================================================
+# MAPEO USO TECNOLÓGICO
+# =====================================================
 
+COLUMN_MAPPING_USO_TEC = {
+    # Número de serie
     "numero_de_serie": "numero_serie",
     "numero_de_serie_de_la_maquina": "numero_serie",
     "nro_de_serie": "numero_serie",
@@ -96,6 +95,7 @@ COLUMN_MAPPING_USO_TEC = {
     "serial_number": "numero_serie",
     "machine_serial_number": "numero_serie",
 
+    # Organización
     "organization_id": "org_id",
     "identificador_de_organizacion": "org_id",
     "id_organizacion": "org_id",
@@ -104,10 +104,7 @@ COLUMN_MAPPING_USO_TEC = {
     "organization_name": "organizacion",
     "organizacion": "organizacion",
 
-    # =================================================
-    # PERIODO SEMANAL
-    # =================================================
-
+    # Periodo semanal
     "fecha_de_inicio": "fecha_inicio",
     "fecha_inicio": "fecha_inicio",
     "start_date": "fecha_inicio",
@@ -119,17 +116,14 @@ COLUMN_MAPPING_USO_TEC = {
     "end_date": "fecha_fin",
     "period_end": "fecha_fin",
 
-    # =================================================
-    # TECNOLOGÍAS
-    # Los símbolos ™ desaparecen durante la normalización.
-    # =================================================
-
+    # AutoTrac
     "autotrac": "autotrac",
     "autotrac_activo": "autotrac",
     "autotractm_activo": "autotrac",
     "autotrac_pct": "autotrac",
     "autotrac_porcentaje": "autotrac",
 
+    # Turn Automation
     "turn_automation": "turn_automation",
     "automatizacion_de_maniobras_autotrac_activo":
         "turn_automation",
@@ -138,12 +132,14 @@ COLUMN_MAPPING_USO_TEC = {
     "turn_automation_pct": "turn_automation",
     "turn_automation_porcentaje": "turn_automation",
 
+    # AutoPath
     "autopath": "autopath",
     "autopath_activo": "autopath",
     "autopathtm_activo": "autopath",
     "autopath_pct": "autopath",
     "autopath_porcentaje": "autopath",
 
+    # Implement Guidance
     "implement_guidance": "implement_guidance",
     "guiado_pasivo_de_implemento_autotrac_activo":
         "implement_guidance",
@@ -152,6 +148,7 @@ COLUMN_MAPPING_USO_TEC = {
     "implement_guidance_pct": "implement_guidance",
     "implement_guidance_porcentaje": "implement_guidance",
 
+    # Efficiency Manager
     "efficiency_manager": "efficiency_manager",
     "tiempo_de_activacion_de_efficiency_manager_automatico":
         "efficiency_manager",
@@ -161,6 +158,7 @@ COLUMN_MAPPING_USO_TEC = {
     "ef_manager": "efficiency_manager",
     "ef_manager_pct": "efficiency_manager",
 
+    # Field Cruise
     "field_cruise": "field_cruise",
     "fieldcruise_activado": "field_cruise",
     "fieldcruisetm_activado": "field_cruise",
@@ -170,17 +168,29 @@ COLUMN_MAPPING_USO_TEC = {
 }
 
 
+# =====================================================
+# MAPEO MOTIVOS OCIOSOS
+# =====================================================
+
 COLUMN_MAPPING_OCIOSIDAD = {
-    # Identificación
+    # Número de serie
     "numero_de_serie": "numero_serie",
     "numero_de_serie_de_la_maquina": "numero_serie",
     "nro_de_serie": "numero_serie",
     "nro_serie": "numero_serie",
     "serie": "numero_serie",
 
+    # Organización
     "organizacion": "organizacion",
     "identificador_de_organizacion": "org_id",
     "id_organizacion": "org_id",
+
+    # Periodo semanal
+    "fecha_de_inicio": "fecha_inicio",
+    "fecha_inicio": "fecha_inicio",
+
+    "fecha_de_terminacion": "fecha_fin",
+    "fecha_fin": "fecha_fin",
 
     # Motivos ociosos
     "cancelada_periodo": "cancelada",
@@ -196,10 +206,6 @@ COLUMN_MAPPING_OCIOSIDAD = {
     "utilizacion_trabajo": "trabajo",
     "utilizacion_transporte": "transporte",
     "utilizacion_ralenti": "ralenti",
-
-    # Fechas, si están disponibles
-    "fecha_de_inicio": "fecha_inicio",
-    "fecha_de_terminacion": "fecha_fin",
 }
 
 
@@ -210,12 +216,16 @@ COLUMN_MAPPING_OCIOSIDAD = {
 def normalizar_nombre_columna(nombre):
     """
     Convierte un encabezado a minúsculas, elimina tildes
-    y reemplaza espacios y símbolos por guiones bajos.
+    y sustituye espacios y símbolos por guiones bajos.
     """
 
     nombre = str(nombre).strip()
 
-    nombre = unicodedata.normalize("NFKD", nombre)
+    nombre = unicodedata.normalize(
+        "NFKD",
+        nombre,
+    )
+
     nombre = "".join(
         caracter
         for caracter in nombre
@@ -231,11 +241,6 @@ def normalizar_nombre_columna(nombre):
 
 
 def normalizar_encabezados(df, mapping):
-    """
-    Normaliza primero todos los encabezados y luego aplica
-    el diccionario de alias correspondiente.
-    """
-
     df = df.copy()
 
     df.columns = [
@@ -243,15 +248,14 @@ def normalizar_encabezados(df, mapping):
         for columna in df.columns
     ]
 
-    df.rename(columns=mapping, inplace=True)
+    df = df.rename(columns=mapping)
 
     return df
 
 
 def leer_csv_flexible(origen):
     """
-    Lee archivos CSV detectando automáticamente si el separador
-    es coma, punto y coma u otro delimitador compatible.
+    Detecta automáticamente el separador del CSV.
     """
 
     return pd.read_csv(
@@ -260,6 +264,7 @@ def leer_csv_flexible(origen):
         engine="python",
         encoding="utf-8-sig",
     )
+
 
 def validar_columnas(df, requeridas, nombre_fuente):
     faltantes = [
@@ -270,14 +275,15 @@ def validar_columnas(df, requeridas, nombre_fuente):
 
     if faltantes:
         raise ValueError(
-            f"Faltan columnas en {nombre_fuente}: {faltantes}. "
-            f"Columnas disponibles: {df.columns.tolist()}"
+            f"Faltan columnas en {nombre_fuente}: "
+            f"{faltantes}. Columnas disponibles: "
+            f"{df.columns.tolist()}"
         )
 
 
 def normalizar_numero_serie(df):
     """
-    Deja la clave de vinculación como texto limpio y en mayúsculas.
+    Normaliza exclusivamente el número de serie.
     """
 
     df = df.copy()
@@ -293,13 +299,18 @@ def normalizar_numero_serie(df):
         .astype("string")
         .str.strip()
         .str.upper()
+        .str.replace(
+            r"[^A-Z0-9]",
+            "",
+            regex=True,
+        )
     )
 
-    # Evita unir filas sin número de serie.
     df = df[
         df["numero_serie"].notna()
         & df["numero_serie"].ne("")
         & df["numero_serie"].ne("NAN")
+        & df["numero_serie"].ne("NONE")
     ].copy()
 
     return df
@@ -307,38 +318,39 @@ def normalizar_numero_serie(df):
 
 def convertir_porcentaje(serie):
     """
-    Acepta valores como:
-    85
-    85%
-    0,85
-    0.85
-
-    Los porcentajes con símbolo se convierten a escala 0-100.
-    Los decimales sin símbolo se mantienen como vienen para no
-    modificar datos ambiguos automáticamente.
+    Convierte valores como 85, 85%, 0,85 o 0.85
+    a una escala porcentual de 0 a 100.
     """
 
-    texto = serie.astype("string").str.strip()
-
-    tiene_porcentaje = texto.str.contains(
-        "%",
-        regex=False,
-        na=False,
-    )
-
     texto = (
-        texto
+        serie
+        .astype("string")
+        .str.strip()
         .str.replace("%", "", regex=False)
         .str.replace(",", ".", regex=False)
         .str.replace(r"\s+", "", regex=True)
     )
 
-    valores = pd.to_numeric(texto, errors="coerce")
+    valores = pd.to_numeric(
+        texto,
+        errors="coerce",
+    )
 
-    # Si había símbolo %, el número ya representa 0-100.
-    valores.loc[tiene_porcentaje] = valores.loc[tiene_porcentaje]
+    # Valores entre 0 y 1 se interpretan como proporciones.
+    mascara_decimal = (
+        valores.notna()
+        & valores.ge(0)
+        & valores.le(1)
+    )
 
-    return valores
+    valores.loc[mascara_decimal] = (
+        valores.loc[mascara_decimal] * 100
+    )
+
+    return valores.clip(
+        lower=0,
+        upper=100,
+    )
 
 
 def normalizar_porcentajes(df):
@@ -361,22 +373,44 @@ def normalizar_porcentajes(df):
 
     for columna in columnas:
         if columna in df.columns:
-            df[columna] = convertir_porcentaje(df[columna])
+            df[columna] = convertir_porcentaje(
+                df[columna]
+            )
+
+    return df
+
+
+def normalizar_fechas(df):
+    df = df.copy()
+
+    for columna in [
+        "fecha_inicio",
+        "fecha_fin",
+    ]:
+        if columna in df.columns:
+            df[columna] = pd.to_datetime(
+                df[columna],
+                errors="coerce",
+                dayfirst=True,
+            ).dt.normalize()
 
     return df
 
 
 # =====================================================
-# CARGA DE FUENTES
+# CARGA DE PARTICIPANTES
 # =====================================================
 
 def cargar_clientes():
     if not CLIENTES_FILE.exists():
         raise FileNotFoundError(
-            f"No se encontró la base de clientes: {CLIENTES_FILE}"
+            f"No se encontró la base de clientes: "
+            f"{CLIENTES_FILE}"
         )
 
-    df = leer_csv_flexible(CLIENTES_FILE)
+    df = leer_csv_flexible(
+        CLIENTES_FILE
+    )
 
     df = normalizar_encabezados(
         df,
@@ -391,16 +425,30 @@ def cargar_clientes():
 
     df = normalizar_numero_serie(df)
 
+    # La dimensión de clientes debe tener una sola fila
+    # por número de serie.
+    df = df.drop_duplicates(
+        subset=["numero_serie"],
+        keep="first",
+    )
+
     return df
 
 
+# =====================================================
+# CARGA DE USO TECNOLÓGICO
+# =====================================================
+
 def cargar_uso_tecnologia():
     try:
-        df = leer_csv_flexible(USO_TEC_URL)
+        df = leer_csv_flexible(
+            USO_TEC_URL
+        )
 
     except Exception as error:
         raise RuntimeError(
-            f"No fue posible leer el CSV de uso-tec-v2: {error}"
+            "No fue posible leer el CSV de uso-tec-v2: "
+            f"{error}"
         ) from error
 
     df = normalizar_encabezados(
@@ -410,30 +458,88 @@ def cargar_uso_tecnologia():
 
     validar_columnas(
         df,
-        ["numero_serie"],
+        [
+            "numero_serie",
+            "fecha_inicio",
+            "fecha_fin",
+            "autotrac",
+            "turn_automation",
+            "autopath",
+            "implement_guidance",
+            "efficiency_manager",
+            "field_cruise",
+        ],
         "datos_consolidados_conci.csv",
     )
 
     df = normalizar_numero_serie(df)
+    df = normalizar_fechas(df)
     df = normalizar_porcentajes(df)
 
-    if "fecha" in df.columns:
-        df["fecha"] = pd.to_datetime(
-            df["fecha"],
-            errors="coerce",
-            dayfirst=True,
+    metricas = [
+        "autotrac",
+        "turn_automation",
+        "autopath",
+        "implement_guidance",
+        "efficiency_manager",
+        "field_cruise",
+    ]
+
+    dimensiones_adicionales = [
+        columna
+        for columna in [
+            "maquina",
+            "modelo",
+            "tipo",
+            "sucursal",
+        ]
+        if columna in df.columns
+    ]
+
+    agregaciones = {
+        columna: "mean"
+        for columna in metricas
+    }
+
+    agregaciones.update(
+        {
+            columna: "first"
+            for columna in dimensiones_adicionales
+        }
+    )
+
+    # Una fila por máquina y semana.
+    df = (
+        df
+        .groupby(
+            [
+                "numero_serie",
+                "fecha_inicio",
+                "fecha_fin",
+            ],
+            as_index=False,
+            dropna=False,
         )
+        .agg(agregaciones)
+    )
 
     return df
 
 
+# =====================================================
+# CARGA DE MOTIVOS OCIOSOS
+# =====================================================
+
 def cargar_ociosidad():
     if not OCIOSOS_FILE.exists():
         raise FileNotFoundError(
-            f"No se encontró la base de ociosidad: {OCIOSOS_FILE}"
+            f"No se encontró la base de ociosidad: "
+            f"{OCIOSOS_FILE}"
         )
 
-    df = leer_csv_flexible(OCIOSOS_FILE)
+    df = leer_csv_flexible(
+        OCIOSOS_FILE
+    )
 
     df = normalizar_encabezados(
         df,
@@ -444,6 +550,8 @@ def cargar_ociosidad():
         df,
         [
             "numero_serie",
+            "fecha_inicio",
+            "fecha_fin",
             "cancelada",
             "sin_definir",
             "ignorada",
@@ -452,15 +560,8 @@ def cargar_ociosidad():
     )
 
     df = normalizar_numero_serie(df)
+    df = normalizar_fechas(df)
     df = normalizar_porcentajes(df)
-
-    for columna_fecha in ["fecha_inicio", "fecha_fin"]:
-        if columna_fecha in df.columns:
-            df[columna_fecha] = pd.to_datetime(
-                df[columna_fecha],
-                errors="coerce",
-                dayfirst=True,
-            )
 
     return df
 
@@ -470,6 +571,13 @@ def cargar_ociosidad():
 # =====================================================
 
 def calcular_ociosidad(df):
+    """
+    Calcula los indicadores de ociosidad sobre la propia
+    tabla de motivos ociosos.
+
+    Esta función no realiza merges.
+    """
+
     df = df.copy()
 
     columnas_ociosas = [
@@ -487,13 +595,28 @@ def calcular_ociosidad(df):
                 df[columna],
                 errors="coerce",
             )
-            .fillna(0)
+            .fillna(0.0)
         )
 
-    df["ocio_controlable"] = (
+    # Cálculo definido para el desafío:
+    # cancelada / (cancelada + sin definir + ignorada)
+    denominador = (
         df["cancelada"]
         + df["sin_definir"]
         + df["ignorada"]
+    )
+
+    df["ocio_controlable"] = 0.0
+
+    mascara_valida = denominador.gt(0)
+
+    df.loc[
+        mascara_valida,
+        "ocio_controlable",
+    ] = (
+        df.loc[mascara_valida, "cancelada"]
+        / denominador.loc[mascara_valida]
+        * 100
     )
 
     df["ocio_controlable"] = (
@@ -504,6 +627,29 @@ def calcular_ociosidad(df):
     df["score_ociosidad"] = (
         100 - df["ocio_controlable"]
     ).clip(lower=0, upper=100)
+
+    # Una fila por máquina y semana.
+    df = (
+        df
+        .groupby(
+            [
+                "numero_serie",
+                "fecha_inicio",
+                "fecha_fin",
+            ],
+            as_index=False,
+            dropna=False,
+        )
+        .agg(
+            {
+                "cancelada": "mean",
+                "sin_definir": "mean",
+                "ignorada": "mean",
+                "ocio_controlable": "mean",
+                "score_ociosidad": "mean",
+            }
+        )
+    )
 
     return df
 
@@ -517,143 +663,87 @@ def construir_dataframe_maestro():
     uso_tec = cargar_uso_tecnologia()
     ociosidad = cargar_ociosidad()
 
-    ociosidad = calcular_ociosidad(ociosidad)
+    ociosidad = calcular_ociosidad(
+        ociosidad
+    )
 
-    # Evita duplicar organización y org_id.
-    columnas_uso = [
-        columna
-        for columna in uso_tec.columns
-        if columna not in {
-            "organizacion",
-            "org_id",
-        }
-    ]
-
-    uso_tec_merge = uso_tec[columnas_uso].copy()
-
-    # Unión entre participantes y datos tecnológicos.
+    # Primero genera una fila por participante y semana.
     df = clientes.merge(
-        uso_tec_merge,
+        uso_tec,
         on="numero_serie",
         how="left",
         suffixes=("_clientes", "_uso"),
     )
 
-    columnas_ociosidad = [
-        "numero_serie",
-        "cancelada",
-        "sin_definir",
-        "ignorada",
-        "ocio_controlable",
-        "score_ociosidad",
-    ]
-
-    for columna in ["fecha_inicio", "fecha_fin"]:
-        if columna in ociosidad.columns:
-            columnas_ociosidad.append(columna)
-
-    # Unión con el histórico de motivos ociosos.
+    # Después incorpora la ociosidad de esa misma semana.
     df = df.merge(
-        ociosidad[columnas_ociosidad],
+        ociosidad,
         on=[
             "numero_serie",
             "fecha_inicio",
-            "fecha_fin"
+            "fecha_fin",
         ],
-        how="left"
+        how="left",
+        validate="many_to_one",
     )
 
-    columnas_ociosidad = [
-        "numero_serie",
-        "fecha_inicio",
-        "fecha_fin",
-        "cancelada",
-        "sin_definir",
-        "ignorada",
-        "ocio_controlable",
-        "score_ociosidad",
-    ]
     # =================================================
-    # UNIFICACIÓN DE COLUMNAS DUPLICADAS
+    # UNIFICACIÓN DE SUCURSAL
     # =================================================
 
-    # Sucursal
-    if "sucursal_x" in df.columns:
-        df["sucursal"] = df["sucursal_x"]
+    if "sucursal_clientes" in df.columns:
+        df["sucursal"] = df[
+            "sucursal_clientes"
+        ]
 
-    elif "sucursal_clientes" in df.columns:
-        df["sucursal"] = df["sucursal_clientes"]
-
-    elif "sucursal_y" in df.columns:
-        df["sucursal"] = df["sucursal_y"]
+        if "sucursal_uso" in df.columns:
+            df["sucursal"] = (
+                df["sucursal"]
+                .fillna(df["sucursal_uso"])
+            )
 
     elif "sucursal_uso" in df.columns:
         df["sucursal"] = df["sucursal_uso"]
 
-    # Máquina
-    if "maquina_x" in df.columns:
-        df["maquina"] = df["maquina_x"]
+    elif "sucursal" not in df.columns:
+        df["sucursal"] = "Sin sucursal"
 
-    elif "maquina_clientes" in df.columns:
-        df["maquina"] = df["maquina_clientes"]
+    # =================================================
+    # COLUMNAS ESTÁNDAR
+    # =================================================
 
-    elif "maquina_y" in df.columns:
-        df["maquina"] = df["maquina_y"]
-
-    elif "maquina_uso" in df.columns:
-        df["maquina"] = df["maquina_uso"]
-
-    # Tipo
-    if "tipo_x" in df.columns:
-        df["tipo"] = df["tipo_x"]
-
-    elif "tipo_clientes" in df.columns:
-        df["tipo"] = df["tipo_clientes"]
-
-    elif "tipo_y" in df.columns:
-        df["tipo"] = df["tipo_y"]
-
-    elif "tipo_uso" in df.columns:
-        df["tipo"] = df["tipo_uso"]
-
-    # Categoría del desafío.
-    if "categoria" not in df.columns:
-        if "crack_campo" in df.columns:
-            df["categoria"] = df["crack_campo"]
-        else:
-            df["categoria"] = "Sin categoría"
-
-    # La organización funciona inicialmente como nombre del cliente.
     if "cliente" not in df.columns:
         if "organizacion" in df.columns:
             df["cliente"] = df["organizacion"]
         else:
             df["cliente"] = "Sin cliente"
 
-    # La base actual no está devolviendo operario.
     if "operario" not in df.columns:
         df["operario"] = "Sin asignar"
 
-    # Limpieza de textos.
+    if "categoria" not in df.columns:
+        df["categoria"] = "Sin categoría"
+
     for columna in [
         "sucursal",
         "cliente",
         "operario",
         "categoria",
     ]:
-        if columna in df.columns:
-            df[columna] = (
-                df[columna]
-                .astype("string")
-                .str.strip()
-            )
+        df[columna] = (
+            df[columna]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
 
-    # Convierte nombres alternativos de categoría.
+    # =================================================
+    # NORMALIZACIÓN DE CATEGORÍAS
+    # =================================================
+
     df["categoria"] = (
         df["categoria"]
-        .fillna("Sin categoría")
-        .astype(str)
-        .str.strip()
+        .replace("", "SIN CATEGORÍA")
         .str.upper()
     )
 
@@ -691,66 +781,49 @@ def construir_dataframe_maestro():
         if columna not in df.columns:
             df[columna] = 0.0
 
-        df[columna] = (
-            pd.to_numeric(
-                df[columna],
-                errors="coerce",
-            )
-            .fillna(0.0)
+        df[columna] = pd.to_numeric(
+            df[columna],
+            errors="coerce",
         )
 
-    # Elimina las versiones duplicadas.
+    # No convertimos inmediatamente los datos tecnológicos
+    # ausentes en cero. NaN significa que no existe información
+    # para esa máquina y semana.
+    columnas_ociosidad = [
+        "cancelada",
+        "sin_definir",
+        "ignorada",
+        "ocio_controlable",
+        "score_ociosidad",
+    ]
+
+    for columna in columnas_ociosidad:
+        df[columna] = df[columna].fillna(0.0)
+
+    # =================================================
+    # LIMPIEZA FINAL
+    # =================================================
+
     df = df.drop(
         columns=[
-            "sucursal_x",
-            "sucursal_y",
             "sucursal_clientes",
             "sucursal_uso",
-            "maquina_x",
-            "maquina_y",
-            "maquina_clientes",
-            "maquina_uso",
-            "tipo_x",
-            "tipo_y",
-            "tipo_clientes",
-            "tipo_uso",
         ],
         errors="ignore",
     )
 
-    # ===============================
-    # COLUMNAS ESTÁNDAR DASHBOARD
-    # ===============================
-    
-    if "sucursal_x" in df.columns:
-        df["sucursal"] = df["sucursal_x"]
-    
-    if "crack_campo" in df.columns:
-        df["categoria"] = df["crack_campo"]
-    
-    if "organizacion" in df.columns:
-        df["cliente"] = df["organizacion"]
-    
-    if "operario" not in df.columns:
-        df["operario"] = "Sin asignar"
-
-    print(
-        df[
-            [
-                "numero_serie",
-                "fecha_inicio",
-                "fecha_fin",
-                "autotrac",
-                "turn_automation",
-                "autopath",
-                "implement_guidance",
-                "efficiency_manager",
-                "field_cruise"
-            ]
-        ].head(20)
+    df = df.sort_values(
+        [
+            "numero_serie",
+            "fecha_inicio",
+            "fecha_fin",
+        ],
+        ascending=True,
+        na_position="last",
     )
 
-    return df
+    return df.reset_index(drop=True)
+
 
 # =====================================================
 # FUNCIÓN PRINCIPAL
