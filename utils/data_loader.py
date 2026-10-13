@@ -497,8 +497,8 @@ def construir_dataframe_maestro():
         uso_tec_merge,
         on="numero_serie",
         how="left",
-        validate="one_to_many",
     )
+
 
     columnas_ociosidad = [
         "numero_serie",
