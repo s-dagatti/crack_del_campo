@@ -670,6 +670,22 @@ def construir_dataframe_maestro():
         errors="ignore",
     )
 
+    # ===============================
+    # COLUMNAS ESTÁNDAR DASHBOARD
+    # ===============================
+    
+    if "sucursal_x" in df.columns:
+        df["sucursal"] = df["sucursal_x"]
+    
+    if "crack_campo" in df.columns:
+        df["categoria"] = df["crack_campo"]
+    
+    if "organizacion" in df.columns:
+        df["cliente"] = df["organizacion"]
+    
+    if "operario" not in df.columns:
+        df["operario"] = "Sin asignar"
+
     return df
 
 # =====================================================
