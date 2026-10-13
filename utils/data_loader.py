@@ -9,10 +9,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-CLIENTES_FILE = BASE_DIR / "data" / "base_de_clientes.xlsx"
-OCIOSOS_FILE = BASE_DIR / "data" / "motivos_ociosos.xlsx"
-
-# Si más adelante lo descargas automáticamente desde uso-tec-v2
+CLIENTES_FILE = BASE_DIR / "data" / "base_de_clientes.csv"
+OCIOSOS_FILE = BASE_DIR / "data" / "motivos_ociosos.csv"
 USO_TEC_FILE = BASE_DIR / "data" / "datos_consolidados_conci.csv"
 
 
@@ -95,8 +93,12 @@ COLUMN_MAPPING_OCIOSIDAD = {
 
 def cargar_clientes():
 
-    df = pd.read_excel(
-        CLIENTES_FILE
+    print(f"Clientes: {CLIENTES_FILE}")
+
+    df = pd.read_csv(
+        CLIENTES_FILE,
+        sep=",",
+        low_memory=False
     )
 
     df.columns = (
@@ -129,8 +131,12 @@ def cargar_uso_tecnologia():
 
 def cargar_ociosidad():
 
-    df = pd.read_excel(
-        OCIOSOS_FILE
+    print(f"Ociosidad: {OCIOSOS_FILE}")
+
+    df = pd.read_csv(
+        OCIOSOS_FILE,
+        sep=",",
+        low_memory=False
     )
 
     df.columns = (
@@ -144,7 +150,6 @@ def cargar_ociosidad():
     )
 
     return df
-
 
 # =====================================================
 # LIMPIEZA
@@ -211,6 +216,15 @@ def calcular_ociosidad(df):
 # =====================================================
 
 def construir_dataframe_maestro():
+    print("==== ARCHIVOS ====")
+    print(CLIENTES_FILE)
+    print(CLIENTES_FILE.exists())
+    
+    print(OCIOSOS_FILE)
+    print(OCIOSOS_FILE.exists())
+    
+    print(USO_TEC_FILE)
+    print(USO_TEC_FILE.exists())
 
     clientes = cargar_clientes()
 
