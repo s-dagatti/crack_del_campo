@@ -472,6 +472,31 @@ def calcular_ociosidad(df):
 
     return df
 
+# =====================================
+# LIMPIEZA COLUMNAS DUPLICADAS
+# =====================================
+
+rename_cols = {}
+
+if "sucursal_x" in df.columns:
+    rename_cols["sucursal_x"] = "sucursal"
+
+if "maquina_x" in df.columns:
+    rename_cols["maquina_x"] = "maquina"
+
+if "tipo_x" in df.columns:
+    rename_cols["tipo_x"] = "tipo"
+
+df = df.rename(columns=rename_cols)
+
+df = df.drop(
+    columns=[
+        "sucursal_y",
+        "maquina_y",
+        "tipo_y"
+    ],
+    errors="ignore"
+)
 
 # =====================================================
 # CONSTRUCCIÓN DEL DATAFRAME MAESTRO
