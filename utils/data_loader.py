@@ -143,12 +143,10 @@ def cargar_uso_tecnologia():
 
 def cargar_ociosidad():
 
-    print(f"Ociosidad: {OCIOSOS_FILE}")
-
     df = pd.read_csv(
         OCIOSOS_FILE,
-        sep=",",
-        low_memory=False
+        sep=None,
+        engine="python"
     )
 
     df.columns = (
@@ -162,6 +160,8 @@ def cargar_ociosidad():
     )
 
     return df
+
+
 
 # =====================================================
 # LIMPIEZA
