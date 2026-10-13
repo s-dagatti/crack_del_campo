@@ -250,7 +250,11 @@ def normalizar_encabezados(df, mapping):
 
     df = df.rename(columns=mapping)
 
+    print(uso_tec.columns.tolist())
+
     return df
+
+
 
 
 def leer_csv_flexible(origen):
@@ -661,6 +665,35 @@ def calcular_ociosidad(df):
 def construir_dataframe_maestro():
     clientes = cargar_clientes()
     uso_tec = cargar_uso_tecnologia()
+    print("USO TEC")
+    print(uso_tec.columns.tolist())
+    
+    print(
+        uso_tec[
+            [
+                "numero_serie",
+                "fecha_inicio",
+                "fecha_fin"
+            ]
+        ].head(20)
+    )
+
+    for c in [
+        "autotrac",
+        "turn_automation",
+        "autopath",
+        "implement_guidance",
+        "efficiency_manager",
+        "field_cruise"
+    ]:
+        if c in uso_tec.columns:
+            print(c)
+            print(
+                uso_tec[c]
+                .dropna()
+                .head()
+            )
+            
     ociosidad = cargar_ociosidad()
 
     ociosidad = calcular_ociosidad(
