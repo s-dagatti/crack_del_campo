@@ -47,7 +47,7 @@ st.stop()
 st.sidebar.header("Filtros")
 
 sucursales = sorted(
-    df["sucursal"].dropna().unique()
+    df["sucursal_x"].dropna().unique()
 )
 
 clientes = sorted(
@@ -74,7 +74,7 @@ df_filtrado = df.copy()
 if sucursal:
 
     df_filtrado = df_filtrado[
-        df_filtrado["sucursal"].isin(sucursal)
+        df_filtrado["sucursal_x"].isin(sucursal)
     ]
 
 if cliente:
@@ -160,7 +160,7 @@ with tab_general:
                 [
                     "operario",
                     "cliente",
-                    "sucursal",
+                    "sucursal_x",
                     "autotrac",
                     "score_basic"
                 ]
@@ -226,7 +226,7 @@ with tab_general:
                 [
                     "operario",
                     "cliente",
-                    "sucursal",
+                    "sucursal_x",
                     "autotrac",
                     "turn_automation",
                     "ocio_controlable",
