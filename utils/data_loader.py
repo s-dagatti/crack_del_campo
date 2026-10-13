@@ -25,7 +25,7 @@ USO_TEC_URL = (
 COLUMN_MAPPING_USO_TEC = {
 
     # identificación
-    "Número de serie": "numero_serie",
+    "Número de serie de la máquina": "numero_serie",
     "Serial Number": "numero_serie",
     "Machine Serial Number": "numero_serie",
 
