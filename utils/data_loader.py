@@ -215,8 +215,8 @@ def normalizar_encabezados(df, mapping):
 
 def leer_csv_flexible(origen):
     """
-    Intenta detectar automáticamente coma o punto y coma.
-    utf-8-sig elimina el BOM habitual de archivos CSV de Excel.
+    Lee archivos CSV detectando automáticamente si el separador
+    es coma, punto y coma u otro delimitador compatible.
     """
 
     return pd.read_csv(
@@ -224,9 +224,7 @@ def leer_csv_flexible(origen):
         sep=None,
         engine="python",
         encoding="utf-8-sig",
-        low_memory=False,
     )
-
 
 def validar_columnas(df, requeridas, nombre_fuente):
     faltantes = [
