@@ -4,9 +4,9 @@ import pandas as pd
 from utils.data_loader import cargar_datos
 from utils.metrics import calcular_scores
 
-# --------------------------------------------------
+# =====================================================
 # CONFIG
-# --------------------------------------------------
+# =====================================================
 
 st.set_page_config(
     page_title="Crack del Campo",
@@ -14,19 +14,29 @@ st.set_page_config(
     layout="wide"
 )
 
-# --------------------------------------------------
-# CARGA
-# --------------------------------------------------
+st.title("🚜 Crack del Campo FY27")
+st.caption("Seguimiento de participantes - Tractores")
 
-df = cargar_datos()
+# =====================================================
+# DATOS
+# =====================================================
 
-df = calcular_scores(df)
+@st.cache_data
+def load_data():
 
-# --------------------------------------------------
+    df = cargar_datos()
+    df = calcular_scores(df)
+
+    return df
+
+
+df = load_data()
+
+# =====================================================
 # SIDEBAR
-# --------------------------------------------------
+# =====================================================
 
-st.sidebar.title("Filtros")
+st.sidebar.header("Filtros")
 
 sucursales = sorted(
     df["sucursal"].dropna().unique()
@@ -44,32 +54,20 @@ sucursal = st.sidebar.multiselect(
 
 cliente = st.sidebar.multiselect(
     "Cliente",
-    options=clientes,
-    default=[]
+    options=clientes
 )
 
-fecha_min = pd.to_datetime(df["fecha"]).min()
-fecha_max = pd.to_datetime(df["fecha"]).max()
-
-periodo = st.sidebar.slider(
-    "Periodo",
-    min_value=fecha_min.to_pydatetime(),
-    max_value=fecha_max.to_pydatetime(),
-    value=(
-        fecha_min.to_pydatetime(),
-        fecha_max.to_pydatetime()
-    )
-)
-
-# --------------------------------------------------
+# =====================================================
 # FILTROS
-# --------------------------------------------------
+# =====================================================
 
 df_filtrado = df.copy()
 
-df_filtrado = df_filtrado[
-    df_filtrado["sucursal"].isin(sucursal)
-]
+if sucursal:
+
+    df_filtrado = df_filtrado[
+        df_filtrado["sucursal"].isin(sucursal)
+    ]
 
 if cliente:
 
@@ -77,23 +75,11 @@ if cliente:
         df_filtrado["cliente"].isin(cliente)
     ]
 
-df_filtrado = df_filtrado[
-    (
-        df_filtrado["fecha"]
-        >= pd.to_datetime(periodo[0])
-    )
-    &
-    (
-        df_filtrado["fecha"]
-        <= pd.to_datetime(periodo[1])
-    )
-]
-
-# --------------------------------------------------
+# =====================================================
 # TABS PRINCIPALES
-# --------------------------------------------------
+# =====================================================
 
-tab_general, tab_informes, tab_clientes = st.tabs(
+tab_general, tab_informe, tab_clientes = st.tabs(
     [
         "📊 Tablero General",
         "📄 Generación Informe",
@@ -101,28 +87,31 @@ tab_general, tab_informes, tab_clientes = st.tabs(
     ]
 )
 
-# ==================================================
+# =====================================================
 # TAB GENERAL
-# ==================================================
+# =====================================================
 
 with tab_general:
 
-    tab_basic, tab_elite = st.tabs(
+    basic_tab, elite_tab = st.tabs(
         [
             "🚜 Basic",
             "🏆 Elite"
         ]
     )
 
-    # ----------------------------------------------
+    # ==========================================
     # BASIC
-    # ----------------------------------------------
+    # ==========================================
 
-    with tab_basic:
+    with basic_tab:
 
         basic = df_filtrado[
-            df_filtrado["categoria"] == "Basic"
+            df_filtrado["categoria"].str.upper()
+            == "BASIC"
         ]
+
+        st.subheader("Categoría Basic")
 
         c1, c2, c3, c4 = st.columns(4)
 
@@ -132,19 +121,21 @@ with tab_general:
         )
 
         c2.metric(
-            "AutoTrac",
-            f"{basic['autotrac'].mean():.1f}%"
+            "Clientes",
+            basic["cliente"].nunique()
         )
 
         c3.metric(
+            "AutoTrac Promedio",
+            f"{basic['autotrac'].mean():.1f}%"
+        )
+
+        c4.metric(
             "Score Basic",
             f"{basic['score_basic'].mean():.1f}"
         )
 
-        c4.metric(
-            "Clientes",
-            basic["cliente"].nunique()
-        )
+        st.divider()
 
         ranking_basic = (
             basic
@@ -154,9 +145,7 @@ with tab_general:
             )
         )
 
-        st.subheader(
-            "Ranking Categoría Basic"
-        )
+        st.subheader("Ranking Basic")
 
         st.dataframe(
             ranking_basic[
@@ -168,18 +157,22 @@ with tab_general:
                     "score_basic"
                 ]
             ],
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True
         )
 
-    # ----------------------------------------------
+    # ==========================================
     # ELITE
-    # ----------------------------------------------
+    # ==========================================
 
-    with tab_elite:
+    with elite_tab:
 
         elite = df_filtrado[
-            df_filtrado["categoria"] == "Elite"
+            df_filtrado["categoria"].str.upper()
+            == "ELITE"
         ]
+
+        st.subheader("Categoría Elite")
 
         c1, c2, c3, c4, c5 = st.columns(5)
 
@@ -208,6 +201,8 @@ with tab_general:
             f"{elite['ocio_controlable'].mean():.1f}%"
         )
 
+        st.divider()
+
         ranking_elite = (
             elite
             .sort_values(
@@ -216,61 +211,63 @@ with tab_general:
             )
         )
 
-        st.subheader(
-            "Ranking Categoría Elite"
-        )
+        st.subheader("Ranking Elite")
 
         st.dataframe(
             ranking_elite[
                 [
                     "operario",
                     "cliente",
-                    "score_elite",
+                    "sucursal",
                     "autotrac",
                     "turn_automation",
-                    "ocio_controlable"
+                    "ocio_controlable",
+                    "score_elite"
                 ]
             ],
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True
         )
 
-# ==================================================
-# INFORMES
-# ==================================================
+# =====================================================
+# TAB INFORMES
+# =====================================================
 
-with tab_informes:
+with tab_informe:
 
     st.info(
-        "Próxima versión"
+        "Próximamente: generación automática de informes."
     )
 
-# ==================================================
-# CLIENTES
-# ==================================================
+# =====================================================
+# TAB CLIENTES
+# =====================================================
 
 with tab_clientes:
 
-    tab_c_basic, tab_c_elite = st.tabs(
+    basic_clientes, elite_clientes = st.tabs(
         [
             "Basic",
             "Elite"
         ]
     )
 
-    with tab_c_basic:
+    with basic_clientes:
 
         st.dataframe(
             df_filtrado[
-                df_filtrado["categoria"] == "Basic"
+                df_filtrado["categoria"].str.upper()
+                == "BASIC"
             ],
             use_container_width=True
         )
 
-    with tab_c_elite:
+    with elite_clientes:
 
         st.dataframe(
             df_filtrado[
-                df_filtrado["categoria"] == "Elite"
+                df_filtrado["categoria"].str.upper()
+                == "ELITE"
             ],
             use_container_width=True
         )
