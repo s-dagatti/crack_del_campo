@@ -77,6 +77,7 @@ COLUMN_MAPPING_CLIENTES = {
     # Categoría
     "categoria": "categoria",
     "segmento": "categoria",
+    "crack_campo": "categoria",
     "categoria_crack_del_campo": "categoria",
     "segmento_crack_del_campo": "categoria",
 }
@@ -472,31 +473,6 @@ def calcular_ociosidad(df):
 
     return df
 
-# =====================================
-# LIMPIEZA COLUMNAS DUPLICADAS
-# =====================================
-
-rename_cols = {}
-
-if "sucursal_x" in df.columns:
-    rename_cols["sucursal_x"] = "sucursal"
-
-if "maquina_x" in df.columns:
-    rename_cols["maquina_x"] = "maquina"
-
-if "tipo_x" in df.columns:
-    rename_cols["tipo_x"] = "tipo"
-
-df = df.rename(columns=rename_cols)
-
-df = df.drop(
-    columns=[
-        "sucursal_y",
-        "maquina_y",
-        "tipo_y"
-    ],
-    errors="ignore"
-)
 
 # =====================================================
 # CONSTRUCCIÓN DEL DATAFRAME MAESTRO
@@ -509,21 +485,25 @@ def construir_dataframe_maestro():
 
     ociosidad = calcular_ociosidad(ociosidad)
 
-    # Evita columnas duplicadas de organización o ID.
+    # Evita duplicar organización y org_id.
     columnas_uso = [
         columna
         for columna in uso_tec.columns
-        if columna not in {"organizacion", "org_id"}
+        if columna not in {
+            "organizacion",
+            "org_id",
+        }
     ]
 
     uso_tec_merge = uso_tec[columnas_uso].copy()
 
+    # Unión entre participantes y datos tecnológicos.
     df = clientes.merge(
         uso_tec_merge,
         on="numero_serie",
         how="left",
+        suffixes=("_clientes", "_uso"),
     )
-
 
     columnas_ociosidad = [
         "numero_serie",
@@ -538,11 +518,112 @@ def construir_dataframe_maestro():
         if columna in ociosidad.columns:
             columnas_ociosidad.append(columna)
 
+    # Unión con el histórico de motivos ociosos.
     df = df.merge(
         ociosidad[columnas_ociosidad],
         on="numero_serie",
         how="left",
     )
+
+    # =================================================
+    # UNIFICACIÓN DE COLUMNAS DUPLICADAS
+    # =================================================
+
+    # Sucursal
+    if "sucursal_x" in df.columns:
+        df["sucursal"] = df["sucursal_x"]
+
+    elif "sucursal_clientes" in df.columns:
+        df["sucursal"] = df["sucursal_clientes"]
+
+    elif "sucursal_y" in df.columns:
+        df["sucursal"] = df["sucursal_y"]
+
+    elif "sucursal_uso" in df.columns:
+        df["sucursal"] = df["sucursal_uso"]
+
+    # Máquina
+    if "maquina_x" in df.columns:
+        df["maquina"] = df["maquina_x"]
+
+    elif "maquina_clientes" in df.columns:
+        df["maquina"] = df["maquina_clientes"]
+
+    elif "maquina_y" in df.columns:
+        df["maquina"] = df["maquina_y"]
+
+    elif "maquina_uso" in df.columns:
+        df["maquina"] = df["maquina_uso"]
+
+    # Tipo
+    if "tipo_x" in df.columns:
+        df["tipo"] = df["tipo_x"]
+
+    elif "tipo_clientes" in df.columns:
+        df["tipo"] = df["tipo_clientes"]
+
+    elif "tipo_y" in df.columns:
+        df["tipo"] = df["tipo_y"]
+
+    elif "tipo_uso" in df.columns:
+        df["tipo"] = df["tipo_uso"]
+
+    # Categoría del desafío.
+    if "categoria" not in df.columns:
+        if "crack_campo" in df.columns:
+            df["categoria"] = df["crack_campo"]
+        else:
+            df["categoria"] = "Sin categoría"
+
+    # La organización funciona inicialmente como nombre del cliente.
+    if "cliente" not in df.columns:
+        if "organizacion" in df.columns:
+            df["cliente"] = df["organizacion"]
+        else:
+            df["cliente"] = "Sin cliente"
+
+    # La base actual no está devolviendo operario.
+    if "operario" not in df.columns:
+        df["operario"] = "Sin asignar"
+
+    # Limpieza de textos.
+    for columna in [
+        "sucursal",
+        "cliente",
+        "operario",
+        "categoria",
+    ]:
+        if columna in df.columns:
+            df[columna] = (
+                df[columna]
+                .astype("string")
+                .str.strip()
+            )
+
+    # Convierte nombres alternativos de categoría.
+    df["categoria"] = (
+        df["categoria"]
+        .fillna("Sin categoría")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    df["categoria"] = df["categoria"].replace(
+        {
+            "BASE": "BASIC",
+            "BÁSICO": "BASIC",
+            "BASICO": "BASIC",
+            "GUIADO BÁSICO": "BASIC",
+            "GUIADO BASICO": "BASIC",
+            "AVANZADO": "ELITE",
+            "GUIADO AVANZADO": "ELITE",
+        }
+    )
+
+    # =================================================
+    # VARIABLES NUMÉRICAS
+    # =================================================
 
     columnas_numericas = [
         "autotrac",
@@ -567,11 +648,29 @@ def construir_dataframe_maestro():
                 df[columna],
                 errors="coerce",
             )
-            .fillna(0)
+            .fillna(0.0)
         )
 
-    return df
+    # Elimina las versiones duplicadas.
+    df = df.drop(
+        columns=[
+            "sucursal_x",
+            "sucursal_y",
+            "sucursal_clientes",
+            "sucursal_uso",
+            "maquina_x",
+            "maquina_y",
+            "maquina_clientes",
+            "maquina_uso",
+            "tipo_x",
+            "tipo_y",
+            "tipo_clientes",
+            "tipo_uso",
+        ],
+        errors="ignore",
+    )
 
+    return df
 
 # =====================================================
 # FUNCIÓN PRINCIPAL
