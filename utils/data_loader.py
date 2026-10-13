@@ -84,7 +84,10 @@ COLUMN_MAPPING_CLIENTES = {
 
 
 COLUMN_MAPPING_USO_TEC = {
-    # Identificación
+    # =================================================
+    # IDENTIFICACIÓN
+    # =================================================
+
     "numero_de_serie": "numero_serie",
     "numero_de_serie_de_la_maquina": "numero_serie",
     "nro_de_serie": "numero_serie",
@@ -96,43 +99,74 @@ COLUMN_MAPPING_USO_TEC = {
     "organization_id": "org_id",
     "identificador_de_organizacion": "org_id",
     "id_organizacion": "org_id",
-    "Identificador de organización": "org_id",
+    "org_id": "org_id",
 
     "organization_name": "organizacion",
     "organizacion": "organizacion",
 
-    # Fechas
-    "fecha": "fecha",
-    "date": "fecha",
-    "period_end": "fecha",
-    "fecha_fin": "fecha",
+    # =================================================
+    # PERIODO SEMANAL
+    # =================================================
 
-    # Tecnologías
-    "aAutoTrac™ Activo": "autotrac",
+    "fecha_de_inicio": "fecha_inicio",
+    "fecha_inicio": "fecha_inicio",
+    "start_date": "fecha_inicio",
+    "period_start": "fecha_inicio",
+
+    "fecha_de_terminacion": "fecha_fin",
+    "fecha_de_finalizacion": "fecha_fin",
+    "fecha_fin": "fecha_fin",
+    "end_date": "fecha_fin",
+    "period_end": "fecha_fin",
+
+    # =================================================
+    # TECNOLOGÍAS
+    # Los símbolos ™ desaparecen durante la normalización.
+    # =================================================
+
+    "autotrac": "autotrac",
+    "autotrac_activo": "autotrac",
+    "autotractm_activo": "autotrac",
     "autotrac_pct": "autotrac",
     "autotrac_porcentaje": "autotrac",
 
-    "Automatización de maniobras AutoTrac™ Activo": "turn_automation",
+    "turn_automation": "turn_automation",
+    "automatizacion_de_maniobras_autotrac_activo":
+        "turn_automation",
+    "automatizacion_de_maniobras_autotractm_activo":
+        "turn_automation",
     "turn_automation_pct": "turn_automation",
     "turn_automation_porcentaje": "turn_automation",
 
     "autopath": "autopath",
-    "AutoPath™ Activo": "autopath",
+    "autopath_activo": "autopath",
+    "autopathtm_activo": "autopath",
+    "autopath_pct": "autopath",
     "autopath_porcentaje": "autopath",
 
     "implement_guidance": "implement_guidance",
-    "Guiado pasivo de implemento AutoTrac™ Activo": "implement_guidance",
+    "guiado_pasivo_de_implemento_autotrac_activo":
+        "implement_guidance",
+    "guiado_pasivo_de_implemento_autotractm_activo":
+        "implement_guidance",
+    "implement_guidance_pct": "implement_guidance",
     "implement_guidance_porcentaje": "implement_guidance",
 
     "efficiency_manager": "efficiency_manager",
+    "tiempo_de_activacion_de_efficiency_manager_automatico":
+        "efficiency_manager",
+    "tiempo_de_activacion_de_efficiency_managertm_automatico":
+        "efficiency_manager",
     "efficiency_manager_pct": "efficiency_manager",
     "ef_manager": "efficiency_manager",
-    "Tiempo de activación de Efficiency Manager™ Automático": "efficiency_manager",
+    "ef_manager_pct": "efficiency_manager",
 
     "field_cruise": "field_cruise",
+    "fieldcruise_activado": "field_cruise",
+    "fieldcruisetm_activado": "field_cruise",
     "field_cruise_pct": "field_cruise",
     "f_cruise": "field_cruise",
-    "FieldCruise™ Activado": "field_cruise",
+    "f_cruise_pct": "field_cruise",
 }
 
 
