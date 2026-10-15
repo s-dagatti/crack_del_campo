@@ -695,6 +695,7 @@ except Exception as error:
 
 columnas_obligatorias = [
     "numero_serie",
+    "organizacion",
     "sucursal",
     "cliente",
     "operario",
@@ -752,6 +753,13 @@ df["categoria"] = (
 
 df["sucursal"] = (
     df["sucursal"]
+    .fillna("")
+    .astype(str)
+    .str.strip()
+)
+
+df["organizacion"] = (
+    df["organizacion"]
     .fillna("")
     .astype(str)
     .str.strip()
@@ -897,16 +905,15 @@ if sucursal_seleccionada!= "Todas":
 
 
 # =====================================================
-# CLIENTES
+# ORGANIZACIONES
 # =====================================================
 
-if clientes_seleccionados:
+if organizaciones_seleccionadas:
     df_filtrado = df_filtrado[
-        df_filtrado["cliente"].isin(
-            clientes_seleccionados
+        df_filtrado["organizacion"].isin(
+            organizaciones_seleccionadas
         )
     ]
-
 
 # =====================================================
 # PERÍODO
