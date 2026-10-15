@@ -4,7 +4,7 @@ import pandas as pd
 
 
 # =====================================================
-# CONFIGURACIÓN DE SCORES
+# CONFIGURACIÓN
 # =====================================================
 
 METRICAS_ELITE = [
@@ -24,12 +24,14 @@ METRICAS_ELITE = [
 
 def obtener_metrica_para_score(df, columna):
     """
-    Devuelve una métrica numérica preparada para el score.
+    Prepara una columna para calcular el score.
 
-    Reglas:
-    - Si la columna no existe, aporta 0.
-    - Si el valor está vacío o no es numérico, aporta 0.
-    - Los valores se limitan al rango de 0 a 100.
+    - Valores ausentes: 0.
+    - Valores no numéricos: 0.
+    - Valores menores que 0: 0.
+    - Valores mayores que 100: 100.
+
+    La columna original del dataframe no se modifica.
     """
 
     if columna not in df.columns:
@@ -53,18 +55,23 @@ def clasificar_intervencion_basic(score):
     """
     Clasifica la necesidad de intervención de Basic.
 
-    Mayor que 70:
+    Score > 70:
         no requiere intervención.
 
-    Entre 55 y 70, inclusive:
+    Score entre 55 y 70, inclusive:
         intervención moderada.
 
-    Menor que 55:
+    Score < 55:
         intervención necesaria.
     """
 
+    score = pd.to_numeric(
+        score,
+        errors="coerce",
+    )
+
     if pd.isna(score):
-        return "SIN CLASIFICAR"
+        score = 0.0
 
     if score > 70:
         return "NO REQUIERE INTERVENCIÓN"
@@ -79,18 +86,23 @@ def clasificar_intervencion_elite(score):
     """
     Clasifica la necesidad de intervención de Elite.
 
-    Mayor que 40:
+    Score > 40:
         no requiere intervención.
 
-    Entre 30 y 40, inclusive:
+    Score entre 30 y 40, inclusive:
         intervención moderada.
 
-    Menor que 30:
+    Score < 30:
         intervención necesaria.
     """
 
+    score = pd.to_numeric(
+        score,
+        errors="coerce",
+    )
+
     if pd.isna(score):
-        return "SIN CLASIFICAR"
+        score = 0.0
 
     if score > 40:
         return "NO REQUIERE INTERVENCIÓN"
@@ -107,17 +119,23 @@ def clasificar_intervencion_elite(score):
 
 def calcular_scores(df):
     """
-    Calcula los scores y la necesidad de intervención
-    para cada máquina y periodo semanal.
+    Calcula:
 
-    Los valores ausentes se consideran 0 exclusivamente
-    para calcular los scores.
+    - score_basic
+    - score_elite
+    - intervencion_basic
+    - intervencion_elite
+    - necesidad_intervencion
+
+    Los valores ausentes de las tecnologías aportan 0
+    al cálculo del score, sin modificar las columnas
+    tecnológicas originales.
     """
 
     df = df.copy()
 
     # =================================================
-    # MÉTRICAS PARA SCORES
+    # PREPARACIÓN DE MÉTRICAS
     # =================================================
 
     autotrac = obtener_metrica_para_score(
@@ -156,14 +174,10 @@ def calcular_scores(df):
     )
 
     # =================================================
-    # SCORE BASIC
+    # SCORES
     # =================================================
 
     df["score_basic"] = autotrac
-
-    # =================================================
-    # SCORE ELITE
-    # =================================================
 
     df["score_elite"] = (
         autotrac
@@ -175,18 +189,18 @@ def calcular_scores(df):
         + score_ociosidad
     ) / len(METRICAS_ELITE)
 
-    df["score_basic"] = df["score_basic"].clip(
-        lower=0,
-        upper=100,
+    df["score_basic"] = (
+        df["score_basic"]
+        .clip(lower=0, upper=100)
     )
 
-    df["score_elite"] = df["score_elite"].clip(
-        lower=0,
-        upper=100,
+    df["score_elite"] = (
+        df["score_elite"]
+        .clip(lower=0, upper=100)
     )
 
     # =================================================
-    # NECESIDAD DE INTERVENCIÓN
+    # CLASIFICACIONES POR CATEGORÍA
     # =================================================
 
     df["intervencion_basic"] = (
@@ -199,39 +213,45 @@ def calcular_scores(df):
         .apply(clasificar_intervencion_elite)
     )
 
-    # Columna unificada para utilizar en el dashboard.
-    df["necesidad_intervencion"] = "SIN CLASIFICAR"
+    # =================================================
+    # COLUMNA UNIFICADA
+    # =================================================
 
-    mascara_basic = (
-        df["categoria"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        .eq("BASIC")
+    df["necesidad_intervencion"] = (
+        "SIN CLASIFICAR"
     )
 
-    mascara_elite = (
-        df["categoria"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        .eq("ELITE")
-    )
+    if "categoria" in df.columns:
+        categoria_normalizada = (
+            df["categoria"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.upper()
+        )
 
-    df.loc[
-        mascara_basic,
-        "necesidad_intervencion",
-    ] = df.loc[
-        mascara_basic,
-        "intervencion_basic",
-    ]
+        mascara_basic = categoria_normalizada.eq(
+            "BASIC"
+        )
 
-    df.loc[
-        mascara_elite,
-        "necesidad_intervencion",
-    ] = df.loc[
-        mascara_elite,
-        "intervencion_elite",
-    ]
+        mascara_elite = categoria_normalizada.eq(
+            "ELITE"
+        )
+
+        df.loc[
+            mascara_basic,
+            "necesidad_intervencion",
+        ] = df.loc[
+            mascara_basic,
+            "intervencion_basic",
+        ]
+
+        df.loc[
+            mascara_elite,
+            "necesidad_intervencion",
+        ] = df.loc[
+            mascara_elite,
+            "intervencion_elite",
+        ]
 
     return df
