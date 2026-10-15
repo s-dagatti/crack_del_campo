@@ -10,30 +10,12 @@ import streamlit as st
 
 
 # =====================================================
-# CONFIGURACIÓN DE GITHUB
-# =====================================================
-
-GITHUB_OWNER = "s-dagatti"
-GITHUB_REPO = "crack-del-campo"
-GITHUB_BRANCH = "main"
-GITHUB_CLIENTES_PATH = "data/base_de_clientes.csv"
-
-GITHUB_API_URL = (
-    f"https://api.github.com/repos/"
-    f"{GITHUB_OWNER}/{GITHUB_REPO}/contents/"
-    f"{GITHUB_CLIENTES_PATH}"
-)
-
-
-# =====================================================
-# FUNCIONES AUXILIARES
+# CONFIGURACIÓN
 # =====================================================
 
 def obtener_token_github():
     """
-    Obtiene el token desde los secretos de Streamlit.
-
-    La configuración esperada es:
+    Obtiene el token desde:
 
     [github]
     token = "..."
@@ -44,9 +26,9 @@ def obtener_token_github():
 
     except Exception as error:
         raise RuntimeError(
-            "No se encontró el token de GitHub en los "
-            "secretos de Streamlit. La configuración esperada "
-            'es: [github] token = "..."'
+            "No se encontró el token de GitHub. "
+            "La configuración esperada es: "
+            '[github] token = "..."'
         ) from error
 
     token = str(token).strip()
@@ -59,12 +41,98 @@ def obtener_token_github():
     return token
 
 
-def construir_headers_github():
+def obtener_configuracion_github_clientes():
     """
-    Construye los encabezados necesarios para comunicarse
-    con la API de GitHub.
+    Obtiene la configuración del repositorio de clientes.
+
+    Configuración esperada:
+
+    [github]
+    clientes_repo = "s-dagatti/crack_del_campo"
+    clientes_branch = "main"
+    clientes_path = "data/base_de_clientes.csv"
     """
 
+    try:
+        configuracion = st.secrets["github"]
+
+        repositorio_completo = str(
+            configuracion["clientes_repo"]
+        ).strip()
+
+        branch = str(
+            configuracion.get(
+                "clientes_branch",
+                "main",
+            )
+        ).strip()
+
+        ruta = str(
+            configuracion.get(
+                "clientes_path",
+                "data/base_de_clientes.csv",
+            )
+        ).strip()
+
+    except Exception as error:
+        raise RuntimeError(
+            "Falta la configuración del repositorio de "
+            "clientes en los secretos de Streamlit."
+        ) from error
+
+    partes = repositorio_completo.split(
+        "/",
+        maxsplit=1,
+    )
+
+    if len(partes)!= 2:
+        raise RuntimeError(
+            "github.clientes_repo debe tener el formato "
+            "'propietario/repositorio'."
+        )
+
+    owner = partes[0].strip()
+    repo = partes[1].strip()
+
+    if not owner or not repo:
+        raise RuntimeError(
+            "github.clientes_repo no es válido."
+        )
+
+    if not branch:
+        raise RuntimeError(
+            "github.clientes_branch está vacío."
+        )
+
+    if not ruta:
+        raise RuntimeError(
+            "github.clientes_path está vacío."
+        )
+
+    return {
+        "owner": owner,
+        "repo": repo,
+        "branch": branch,
+        "path": ruta,
+    }
+
+
+def construir_url_archivo(configuracion):
+    """
+    Construye la URL de la API para el archivo editable.
+    """
+
+    owner = configuracion["owner"]
+    repo = configuracion["repo"]
+    ruta = configuracion["path"]
+
+    return (
+        f"https://api.github.com/repos/"
+        f"{owner}/{repo}/contents/{ruta}"
+    )
+
+
+def construir_headers_github():
     token = obtener_token_github()
 
     return {
@@ -74,13 +142,11 @@ def construir_headers_github():
     }
 
 
+# =====================================================
+# UTILIDADES CSV
+# =====================================================
+
 def detectar_separador_csv(contenido):
-    """
-    Intenta conservar el separador actual del CSV.
-
-    Si no puede detectarlo, utiliza punto y coma.
-    """
-
     muestra = contenido[:5000]
 
     try:
@@ -101,48 +167,44 @@ def detectar_separador_csv(contenido):
 
 
 def normalizar_numero_serie_valor(valor):
-    """
-    Normaliza un número de serie para utilizarlo como clave.
-
-    Ejemplo:
-        " 1rw-8295 " -> "1RW8295"
-    """
-
     serie = str(valor).strip().upper()
 
-    serie = "".join(
+    return "".join(
         caracter
         for caracter in serie
         if caracter.isalnum()
     )
 
-    return serie
-
 
 # =====================================================
-# LECTURA DEL CSV
+# LECTURA
 # =====================================================
 
 def cargar_clientes_github():
     """
-    Lee la versión actual del CSV desde GitHub.
+    Lee la versión actual del CSV de participantes.
 
     Devuelve:
     - dataframe;
-    - SHA actual del archivo;
-    - separador detectado.
-
-    El SHA se utiliza para evitar sobrescribir cambios
-    realizados por otra persona.
+    - SHA;
+    - separador.
     """
+
+    configuracion = (
+        obtener_configuracion_github_clientes()
+    )
+
+    github_api_url = construir_url_archivo(
+        configuracion
+    )
 
     headers = construir_headers_github()
 
     respuesta = requests.get(
-        GITHUB_API_URL,
+        github_api_url,
         headers=headers,
         params={
-            "ref": GITHUB_BRANCH,
+            "ref": configuracion["branch"],
         },
         timeout=30,
     )
@@ -154,20 +216,25 @@ def cargar_clientes_github():
 
     if respuesta.status_code == 403:
         raise RuntimeError(
-            "El token no tiene permisos suficientes para "
-            "acceder al archivo de clientes."
+            "El token no tiene permisos suficientes "
+            "para acceder al repositorio."
         )
 
     if respuesta.status_code == 404:
         raise RuntimeError(
-            "No se encontró el archivo de clientes en GitHub. "
-            f"Ruta esperada: {GITHUB_CLIENTES_PATH}"
+            "GitHub no encontró el repositorio, la rama "
+            "o el archivo. "
+            f"Ubicación consultada: "
+            f"{configuracion['owner']}/"
+            f"{configuracion['repo']}/"
+            f"{configuracion['path']} "
+            f"(rama: {configuracion['branch']})."
         )
 
     if not respuesta.ok:
         raise RuntimeError(
-            "No fue posible leer el archivo de clientes "
-            "desde GitHub."
+            "No fue posible leer el archivo de clientes. "
+            f"Estado recibido: {respuesta.status_code}."
         )
 
     datos = respuesta.json()
@@ -177,7 +244,8 @@ def cargar_clientes_github():
 
     if not contenido_base64:
         raise RuntimeError(
-            "GitHub devolvió el archivo sin contenido."
+            "GitHub encontró el archivo, pero no devolvió "
+            "su contenido."
         )
 
     if not sha:
@@ -185,28 +253,41 @@ def cargar_clientes_github():
             "GitHub no devolvió la versión del archivo."
         )
 
-    contenido = base64.b64decode(
-        contenido_base64
-    ).decode(
-        "utf-8-sig"
-    )
+    try:
+        contenido = base64.b64decode(
+            contenido_base64
+        ).decode(
+            "utf-8-sig"
+        )
+
+    except Exception as error:
+        raise RuntimeError(
+            "No se pudo decodificar el CSV de clientes."
+        ) from error
 
     separador = detectar_separador_csv(
         contenido
     )
 
-    dataframe = pd.read_csv(
-        StringIO(contenido),
-        sep=separador,
-        dtype="string",
-        keep_default_na=False,
-    )
+    try:
+        dataframe = pd.read_csv(
+            StringIO(contenido),
+            sep=separador,
+            dtype="string",
+            keep_default_na=False,
+        )
+
+    except Exception as error:
+        raise RuntimeError(
+            "El archivo fue encontrado, pero no pudo "
+            "interpretarse como CSV."
+        ) from error
 
     return dataframe, sha, separador
 
 
 # =====================================================
-# GUARDADO DEL CSV
+# GUARDADO
 # =====================================================
 
 def guardar_clientes_github(
@@ -216,12 +297,7 @@ def guardar_clientes_github(
     mensaje_commit,
 ):
     """
-    Guarda el dataframe en el CSV del repositorio.
-
-    El SHA debe corresponder a la versión que se leyó antes
-    de editar. Si otra persona modificó el archivo mientras
-    tanto, GitHub rechazará la operación para evitar que se
-    pierdan sus cambios.
+    Guarda el CSV mediante un commit en GitHub.
     """
 
     if dataframe is None:
@@ -234,9 +310,15 @@ def guardar_clientes_github(
             "No se recibió la versión actual del archivo."
         )
 
-    dataframe_guardar = dataframe.copy()
+    configuracion = (
+        obtener_configuracion_github_clientes()
+    )
 
-    contenido_csv = dataframe_guardar.to_csv(
+    github_api_url = construir_url_archivo(
+        configuracion
+    )
+
+    contenido_csv = dataframe.to_csv(
         index=False,
         sep=separador,
         lineterminator="\n",
@@ -250,14 +332,12 @@ def guardar_clientes_github(
         "message": mensaje_commit,
         "content": contenido_base64,
         "sha": sha,
-        "branch": GITHUB_BRANCH,
+        "branch": configuracion["branch"],
     }
 
-    headers = construir_headers_github()
-
     respuesta = requests.put(
-        GITHUB_API_URL,
-        headers=headers,
+        github_api_url,
+        headers=construir_headers_github(),
         json=payload,
         timeout=30,
     )
@@ -279,14 +359,23 @@ def guardar_clientes_github(
     }:
         raise RuntimeError(
             "El archivo cambió mientras estabas editando. "
-            "Recargá el tablero e intentá nuevamente para "
-            "evitar sobrescribir cambios de otra persona."
+            "Recargá el tablero e intentá nuevamente."
+        )
+
+    if respuesta.status_code == 404:
+        raise RuntimeError(
+            "GitHub no encontró el repositorio, la rama "
+            "o el archivo que se intentó modificar. "
+            f"Ubicación: "
+            f"{configuracion['owner']}/"
+            f"{configuracion['repo']}/"
+            f"{configuracion['path']}."
         )
 
     if not respuesta.ok:
         raise RuntimeError(
-            "GitHub no pudo guardar los cambios en el "
-            "archivo de clientes."
+            "GitHub no pudo guardar los cambios. "
+            f"Estado recibido: {respuesta.status_code}."
         )
 
     return respuesta.json()
