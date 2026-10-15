@@ -117,7 +117,171 @@ def promedio_seguro(df, columna):
 
     return float(resultado)
 
+def valor_informado(serie):
+    """
+    Devuelve una máscara booleana que identifica valores
+    realmente informados.
 
+    Considera vacíos:
+    - NaN;
+    - texto vacío;
+    - 'nan';
+    - 'none';
+    - 'sin asignar';
+    - 'sin datos';
+    - 'sin dato'.
+    """
+
+    texto = (
+        serie
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    valores_vacios = [
+        "",
+        "nan",
+        "none",
+        "null",
+        "sin asignar",
+        "sin datos",
+        "sin dato",
+        "no informado",
+    ]
+
+    return ~texto.isin(
+        valores_vacios
+    )
+
+
+def calcular_completitud_clientes(df):
+    """
+    Calcula indicadores de completitud para el listado
+    de participantes.
+
+    Un registro se considera completo cuando contiene:
+    - organización;
+    - Organization ID;
+    - sucursal;
+    - número de serie;
+    - nombre del operario;
+    - categoría;
+    - teléfono del operario.
+    """
+
+    campos_requeridos = [
+        "organizacion",
+        "org_id",
+        "sucursal",
+        "numero_serie",
+        "operario",
+        "categoria",
+        "telefono_operario",
+    ]
+
+    total = len(df)
+
+    if total == 0:
+        return {
+            "total": 0,
+            "registros_completos": 0,
+            "porcentaje_completo": 0.0,
+            "telefonos_cargados": 0,
+            "porcentaje_telefonos": 0.0,
+        }
+
+    mascara_completa = pd.Series(
+        True,
+        index=df.index,
+        dtype="bool",
+    )
+
+    for columna in campos_requeridos:
+        if columna not in df.columns:
+            mascara_completa &= False
+
+        else:
+            mascara_completa &= valor_informado(
+                df[columna]
+            )
+
+    registros_completos = int(
+        mascara_completa.sum()
+    )
+
+    if "telefono_operario" in df.columns:
+        telefonos_cargados = int(
+            valor_informado(
+                df["telefono_operario"]
+            ).sum()
+        )
+
+    else:
+        telefonos_cargados = 0
+
+    porcentaje_completo = (
+        registros_completos
+        / total
+        * 100
+    )
+
+    porcentaje_telefonos = (
+        telefonos_cargados
+        / total
+        * 100
+    )
+
+    return {
+        "total": total,
+        "registros_completos": registros_completos,
+        "porcentaje_completo": porcentaje_completo,
+        "telefonos_cargados": telefonos_cargados,
+        "porcentaje_telefonos": porcentaje_telefonos,
+    }
+
+
+def mostrar_resumen_completitud(df):
+    """
+    Muestra los KPI de completitud del listado.
+    """
+
+    indicadores = calcular_completitud_clientes(
+        df
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric(
+        "Máquinas",
+        indicadores["total"],
+    )
+
+    c2.metric(
+        "Registros completos",
+        (
+            f"{indicadores['registros_completos']} "
+            f"de {indicadores['total']}"
+        ),
+    )
+
+    c3.metric(
+        "Información completa",
+        (
+            f"{indicadores['porcentaje_completo']:.1f}%"
+        ),
+    )
+
+    c4.metric(
+        "Celular de operario",
+        (
+            f"{indicadores['telefonos_cargados']} "
+            f"de {indicadores['total']} "
+            f"({indicadores['porcentaje_telefonos']:.1f}%)"
+        ),
+    )
+    
 def construir_evolucion_semanal(
     df,
     metricas,
@@ -299,6 +463,8 @@ def consolidar_periodo(df):
         "modelo",
         "tipo",
         "telefono",
+        "telefono_operario",
+        "telefono_cliente",
         "pais",
         "provincia",
         "ciudad",
@@ -1522,43 +1688,51 @@ with tab_clientes:
     )
 
     columnas_clientes_deseadas = [
-        "operario",
-        "cliente",
-        "telefono_operario",
-        "telefono_cliente",
-        "sucursal",
-        "numero_serie",
         "organizacion",
         "org_id",
-        "pais",
-        "provincia",
-        "ciudad",
+        "sucursal",
+        "numero_serie",
+        "operario",
         "categoria",
-        "fecha_inicio",
-        "fecha_fin",
+        "telefono_operario",
         "necesidad_intervencion",
     ]
 
     # =================================================
     # CLIENTES BASIC
     # =================================================
-
+    
     with basic_clientes:
         datos_basic = basic_periodo.copy()
-
+    
         columnas_basic_clientes = [
             columna
             for columna in columnas_clientes_deseadas
             if columna in datos_basic.columns
         ]
-
+    
         if datos_basic.empty:
             mostrar_tabla_vacia(
                 "No hay clientes Basic para "
                 "los filtros seleccionados."
             )
-
+    
         else:
+            st.subheader(
+                "Participantes Basic"
+            )
+    
+            mostrar_resumen_completitud(
+                datos_basic
+            )
+    
+            st.caption(
+                "Un registro se considera completo cuando tiene "
+                "organización, Organization ID, sucursal, número "
+                "de serie, operario, categoría y celular del "
+                "operario."
+            )
+    
             st.dataframe(
                 datos_basic[
                     columnas_basic_clientes
@@ -1566,16 +1740,39 @@ with tab_clientes:
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "fecha_inicio": (
-                        st.column_config.DateColumn(
-                            "Desde",
-                            format="DD/MM/YYYY",
+                    "organizacion": (
+                        st.column_config.TextColumn(
+                            "Organización"
                         )
                     ),
-                    "fecha_fin": (
-                        st.column_config.DateColumn(
-                            "Hasta",
-                            format="DD/MM/YYYY",
+                    "org_id": (
+                        st.column_config.TextColumn(
+                            "Organization ID"
+                        )
+                    ),
+                    "sucursal": (
+                        st.column_config.TextColumn(
+                            "Sucursal"
+                        )
+                    ),
+                    "numero_serie": (
+                        st.column_config.TextColumn(
+                            "N.º de serie"
+                        )
+                    ),
+                    "operario": (
+                        st.column_config.TextColumn(
+                            "Operario"
+                        )
+                    ),
+                    "categoria": (
+                        st.column_config.TextColumn(
+                            "Categoría"
+                        )
+                    ),
+                    "telefono_operario": (
+                        st.column_config.TextColumn(
+                            "Celular del operario"
                         )
                     ),
                     "necesidad_intervencion": (
@@ -1590,23 +1787,38 @@ with tab_clientes:
     # =================================================
     # CLIENTES ELITE
     # =================================================
-
+    
     with elite_clientes:
         datos_elite = elite_periodo.copy()
-
+    
         columnas_elite_clientes = [
             columna
             for columna in columnas_clientes_deseadas
             if columna in datos_elite.columns
         ]
-
+    
         if datos_elite.empty:
             mostrar_tabla_vacia(
                 "No hay clientes Elite para "
                 "los filtros seleccionados."
             )
-
+    
         else:
+            st.subheader(
+                "Participantes Elite"
+            )
+    
+            mostrar_resumen_completitud(
+                datos_elite
+            )
+    
+            st.caption(
+                "Un registro se considera completo cuando tiene "
+                "organización, Organization ID, sucursal, número "
+                "de serie, operario, categoría y celular del "
+                "operario."
+            )
+    
             st.dataframe(
                 datos_elite[
                     columnas_elite_clientes
@@ -1614,16 +1826,39 @@ with tab_clientes:
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "fecha_inicio": (
-                        st.column_config.DateColumn(
-                            "Desde",
-                            format="DD/MM/YYYY",
+                    "organizacion": (
+                        st.column_config.TextColumn(
+                            "Organización"
                         )
                     ),
-                    "fecha_fin": (
-                        st.column_config.DateColumn(
-                            "Hasta",
-                            format="DD/MM/YYYY",
+                    "org_id": (
+                        st.column_config.TextColumn(
+                            "Organization ID"
+                        )
+                    ),
+                    "sucursal": (
+                        st.column_config.TextColumn(
+                            "Sucursal"
+                        )
+                    ),
+                    "numero_serie": (
+                        st.column_config.TextColumn(
+                            "N.º de serie"
+                        )
+                    ),
+                    "operario": (
+                        st.column_config.TextColumn(
+                            "Operario"
+                        )
+                    ),
+                    "categoria": (
+                        st.column_config.TextColumn(
+                            "Categoría"
+                        )
+                    ),
+                    "telefono_operario": (
+                        st.column_config.TextColumn(
+                            "Celular del operario"
                         )
                     ),
                     "necesidad_intervencion": (
@@ -1693,293 +1928,417 @@ with tab_clientes:
         # =============================================
         # EDITAR MÁQUINA
         # =============================================
-
+        
         with editar_tab:
             if clientes_edicion.empty:
                 st.info(
                     "No hay máquinas disponibles para editar."
                 )
-
+        
             else:
-                opciones_series = sorted(
-                    clientes_edicion[
-                        "numero_serie"
-                    ]
-                    .dropna()
-                    .loc[
-                        lambda serie:
-                        serie.astype(str).str.strip().ne("")
-                    ]
-                    .astype(str)
-                    .unique()
-                    .tolist()
+                st.markdown(
+                    "#### Buscar máquina"
                 )
-
-                serie_editar = st.selectbox(
-                    "Seleccionar número de serie",
-                    options=opciones_series,
-                    key="serie_editar",
+        
+                texto_busqueda = st.text_input(
+                    (
+                        "Buscar por número de serie, cliente, "
+                        "organización u operario"
+                    ),
+                    placeholder=(
+                        "Ej.: 1RW..., nombre del cliente, "
+                        "organización u operario"
+                    ),
+                    key="buscar_maquina_edicion",
                 )
-
-                registro = (
-                    clientes_edicion[
-                        clientes_edicion["numero_serie"]
-                        == serie_editar
+        
+                clientes_resultado = (
+                    clientes_edicion.copy()
+                )
+        
+                if texto_busqueda.strip():
+                    busqueda = texto_busqueda.strip()
+        
+                    columnas_busqueda = [
+                        columna
+                        for columna in [
+                            "numero_serie",
+                            "cliente",
+                            "organizacion",
+                            "operario",
+                        ]
+                        if columna in clientes_resultado.columns
                     ]
-                    .iloc[0]
-                )
-
-                with st.form(
-                    key=f"form_editar_{serie_editar}"
-                ):
-                    st.markdown(
-                        "#### Datos de inscripción"
+        
+                    mascara_busqueda = pd.Series(
+                        False,
+                        index=clientes_resultado.index,
+                        dtype="bool",
                     )
-
-                    columna_1, columna_2 = st.columns(2)
-
-                    with columna_1:
-                        numero_serie_editado = st.text_input(
-                            "Número de serie",
-                            value=valor_registro(
-                                registro,
-                                "numero_serie",
-                            ),
-                        )
-
-                        organizacion_editada = st.text_input(
-                            "Organización",
-                            value=valor_registro(
-                                registro,
-                                "organizacion",
-                            ),
-                        )
-
-                        org_id_editado = st.text_input(
-                            "Organization ID",
-                            value=valor_registro(
-                                registro,
-                                "org_id",
-                            ),
-                        )
-
-                        sucursal_editada = st.text_input(
-                            "Sucursal",
-                            value=valor_registro(
-                                registro,
-                                "sucursal",
-                            ),
-                        )
-
-                        operario_editado = st.text_input(
-                            "Nombre del operario",
-                            value=valor_registro(
-                                registro,
-                                "operario",
-                            ),
-                        )
-
-                        telefono_operario_editado = (
-                            st.text_input(
-                                "Teléfono del operario",
-                                value=valor_registro(
-                                    registro,
-                                    "telefono_operario",
-                                ),
+        
+                    for columna in columnas_busqueda:
+                        mascara_busqueda |= (
+                            clientes_resultado[columna]
+                            .fillna("")
+                            .astype(str)
+                            .str.contains(
+                                busqueda,
+                                case=False,
+                                regex=False,
+                                na=False,
                             )
                         )
-
-                    with columna_2:
-                        cliente_editado = st.text_input(
-                            "Nombre del cliente",
-                            value=valor_registro(
-                                registro,
-                                "cliente",
-                            ),
+        
+                    clientes_resultado = (
+                        clientes_resultado[
+                            mascara_busqueda
+                        ]
+                        .copy()
+                    )
+        
+                if not texto_busqueda.strip():
+                    st.info(
+                        "Escribí un número de serie, nombre del "
+                        "cliente, organización u operario para "
+                        "buscar una máquina."
+                    )
+        
+                elif clientes_resultado.empty:
+                    st.warning(
+                        "No se encontraron máquinas que coincidan "
+                        "con la búsqueda."
+                    )
+        
+                else:
+                    st.caption(
+                        f"{len(clientes_resultado)} "
+                        "coincidencia(s)"
+                    )
+        
+                    opciones_edicion = {}
+        
+                    for indice, fila in (
+                        clientes_resultado.iterrows()
+                    ):
+                        serie = valor_registro(
+                            fila,
+                            "numero_serie",
                         )
-
-                        telefono_cliente_editado = (
-                            st.text_input(
-                                "Teléfono del cliente",
-                                value=valor_registro(
-                                    registro,
-                                    "telefono_cliente",
+        
+                        cliente = valor_registro(
+                            fila,
+                            "cliente",
+                        )
+        
+                        organizacion = valor_registro(
+                            fila,
+                            "organizacion",
+                        )
+        
+                        operario = valor_registro(
+                            fila,
+                            "operario",
+                        )
+        
+                        etiqueta = " · ".join(
+                            [
+                                serie or "Sin serie",
+                                cliente or "Sin cliente",
+                                organizacion or (
+                                    "Sin organización"
                                 ),
-                            )
-                        )
-
-                        pais_editado = st.text_input(
-                            "País",
-                            value=valor_registro(
-                                registro,
-                                "pais",
-                            ),
-                        )
-
-                        provincia_editada = st.text_input(
-                            "Provincia",
-                            value=valor_registro(
-                                registro,
-                                "provincia",
-                            ),
-                        )
-
-                        ciudad_editada = st.text_input(
-                            "Ciudad",
-                            value=valor_registro(
-                                registro,
-                                "ciudad",
-                            ),
-                        )
-
-                        categoria_actual = valor_registro(
-                            registro,
-                            "categoria",
-                        )
-
-                        indice_categoria = (
-                            1
-                            if categoria_actual == "ELITE"
-                            else 0
-                        )
-
-                        categoria_editada = st.selectbox(
-                            "Categoría",
-                            options=[
-                                "BASIC",
-                                "ELITE",
-                            ],
-                            index=indice_categoria,
-                        )
-
-                    guardar_edicion = st.form_submit_button(
-                        "Guardar cambios",
-                        type="primary",
-                        use_container_width=True,
-                    )
-
-                if guardar_edicion:
-                    serie_nueva = (
-                        normalizar_numero_serie_valor(
-                            numero_serie_editado
-                        )
-                    )
-
-                    if not serie_nueva:
-                        st.error(
-                            "El número de serie es obligatorio."
-                        )
-
-                    else:
-                        serie_duplicada = (
-                            clientes_edicion[
-                                "numero_serie"
+                                operario or "Sin operario",
                             ]
-                            .ne(serie_editar)
-                            & clientes_edicion[
-                                "numero_serie"
-                            ].eq(serie_nueva)
-                        ).any()
-
-                        if serie_duplicada:
-                            st.error(
-                                "Ya existe otra máquina con "
-                                "ese número de serie."
+                        )
+        
+                        etiqueta_unica = etiqueta
+        
+                        if etiqueta_unica in opciones_edicion:
+                            etiqueta_unica = (
+                                f"{etiqueta} · Registro {indice}"
                             )
-
-                        else:
-                            mascara = (
-                                clientes_edicion[
-                                    "numero_serie"
-                                ]
-                                == serie_editar
+        
+                        opciones_edicion[
+                            etiqueta_unica
+                        ] = indice
+        
+                    etiqueta_seleccionada = st.selectbox(
+                        "Seleccionar una máquina",
+                        options=list(
+                            opciones_edicion.keys()
+                        ),
+                        key="resultado_busqueda_edicion",
+                    )
+        
+                    indice_registro = opciones_edicion[
+                        etiqueta_seleccionada
+                    ]
+        
+                    registro = clientes_edicion.loc[
+                        indice_registro
+                    ].copy()
+        
+                    serie_editar = valor_registro(
+                        registro,
+                        "numero_serie",
+                    )
+        
+                    st.divider()
+        
+                    with st.form(
+                        key=f"form_editar_{indice_registro}"
+                    ):
+                        st.markdown(
+                            "#### Datos de inscripción"
+                        )
+        
+                        columna_1, columna_2 = st.columns(2)
+        
+                        with columna_1:
+                            numero_serie_editado = st.text_input(
+                                "Número de serie",
+                                value=valor_registro(
+                                    registro,
+                                    "numero_serie",
+                                ),
                             )
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "numero_serie",
-                            ] = serie_nueva
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "organizacion",
-                            ] = organizacion_editada.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "org_id",
-                            ] = org_id_editado.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "sucursal",
-                            ] = sucursal_editada.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "operario",
-                            ] = operario_editado.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "telefono_operario",
-                            ] = (
-                                telefono_operario_editado.strip()
+        
+                            organizacion_editada = st.text_input(
+                                "Organización",
+                                value=valor_registro(
+                                    registro,
+                                    "organizacion",
+                                ),
                             )
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "cliente",
-                            ] = cliente_editado.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "telefono_cliente",
-                            ] = (
-                                telefono_cliente_editado.strip()
+        
+                            org_id_editado = st.text_input(
+                                "Organization ID",
+                                value=valor_registro(
+                                    registro,
+                                    "org_id",
+                                ),
                             )
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "pais",
-                            ] = pais_editado.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "provincia",
-                            ] = provincia_editada.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "ciudad",
-                            ] = ciudad_editada.strip()
-
-                            clientes_edicion.loc[
-                                mascara,
-                                "categoria",
-                            ] = categoria_editada
-
-                            try:
-                                guardar_cambios_clientes(
-                                    df_clientes=clientes_edicion,
-                                    sha=clientes_sha,
-                                    separador=separador_csv,
-                                    mensaje=(
-                                        "Actualiza participante "
-                                        f"{serie_editar}"
+        
+                            sucursal_editada = st.text_input(
+                                "Sucursal",
+                                value=valor_registro(
+                                    registro,
+                                    "sucursal",
+                                ),
+                            )
+        
+                            operario_editado = st.text_input(
+                                "Nombre del operario",
+                                value=valor_registro(
+                                    registro,
+                                    "operario",
+                                ),
+                            )
+        
+                            telefono_operario_editado = (
+                                st.text_input(
+                                    "Teléfono del operario",
+                                    value=valor_registro(
+                                        registro,
+                                        "telefono_operario",
                                     ),
                                 )
-
-                            except Exception as error:
-                                st.error(
-                                    "No se pudieron guardar "
-                                    "los cambios."
+                            )
+        
+                        with columna_2:
+                            cliente_editado = st.text_input(
+                                "Nombre del cliente",
+                                value=valor_registro(
+                                    registro,
+                                    "cliente",
+                                ),
+                            )
+        
+                            telefono_cliente_editado = (
+                                st.text_input(
+                                    "Teléfono del cliente",
+                                    value=valor_registro(
+                                        registro,
+                                        "telefono_cliente",
+                                    ),
                                 )
-
-                                with st.expander(
-                                    "Detalle técnico"
-                                ):
-                                    st.exception(error)
+                            )
+        
+                            pais_editado = st.text_input(
+                                "País",
+                                value=valor_registro(
+                                    registro,
+                                    "pais",
+                                ),
+                            )
+        
+                            provincia_editada = st.text_input(
+                                "Provincia",
+                                value=valor_registro(
+                                    registro,
+                                    "provincia",
+                                ),
+                            )
+        
+                            ciudad_editada = st.text_input(
+                                "Ciudad",
+                                value=valor_registro(
+                                    registro,
+                                    "ciudad",
+                                ),
+                            )
+        
+                            categoria_actual = (
+                                valor_registro(
+                                    registro,
+                                    "categoria",
+                                )
+                            )
+        
+                            indice_categoria = (
+                                1
+                                if categoria_actual == "ELITE"
+                                else 0
+                            )
+        
+                            categoria_editada = st.selectbox(
+                                "Categoría",
+                                options=[
+                                    "BASIC",
+                                    "ELITE",
+                                ],
+                                index=indice_categoria,
+                            )
+        
+                        guardar_edicion = (
+                            st.form_submit_button(
+                                "Guardar cambios",
+                                type="primary",
+                                use_container_width=True,
+                            )
+                        )
+        
+                    if guardar_edicion:
+                        serie_nueva = (
+                            normalizar_numero_serie_valor(
+                                numero_serie_editado
+                            )
+                        )
+        
+                        if not serie_nueva:
+                            st.error(
+                                "El número de serie es obligatorio."
+                            )
+        
+                        else:
+                            mascara_otras_filas = (
+                                clientes_edicion.index
+                                != indice_registro
+                            )
+        
+                            serie_duplicada = (
+                                clientes_edicion.loc[
+                                    mascara_otras_filas,
+                                    "numero_serie",
+                                ]
+                                .eq(serie_nueva)
+                                .any()
+                            )
+        
+                            if serie_duplicada:
+                                st.error(
+                                    "Ya existe otra máquina con "
+                                    "ese número de serie."
+                                )
+        
+                            else:
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "numero_serie",
+                                ] = serie_nueva
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "organizacion",
+                                ] = organizacion_editada.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "org_id",
+                                ] = org_id_editado.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "sucursal",
+                                ] = sucursal_editada.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "operario",
+                                ] = operario_editado.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "telefono_operario",
+                                ] = (
+                                    telefono_operario_editado.strip()
+                                )
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "cliente",
+                                ] = cliente_editado.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "telefono_cliente",
+                                ] = (
+                                    telefono_cliente_editado.strip()
+                                )
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "pais",
+                                ] = pais_editado.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "provincia",
+                                ] = provincia_editada.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "ciudad",
+                                ] = ciudad_editada.strip()
+        
+                                clientes_edicion.loc[
+                                    indice_registro,
+                                    "categoria",
+                                ] = categoria_editada
+        
+                                try:
+                                    guardar_cambios_clientes(
+                                        df_clientes=(
+                                            clientes_edicion
+                                        ),
+                                        sha=clientes_sha,
+                                        separador=separador_csv,
+                                        mensaje=(
+                                            "Actualiza participante "
+                                            f"{serie_editar}"
+                                        ),
+                                    )
+        
+                                except Exception as error:
+                                    st.error(
+                                        "No se pudieron guardar "
+                                        "los cambios."
+                                    )
+        
+                                    with st.expander(
+                                        "Detalle técnico"
+                                    ):
+                                        st.exception(error)
 
         # =============================================
         # AGREGAR MÁQUINA
