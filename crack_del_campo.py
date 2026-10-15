@@ -1,9 +1,20 @@
 import pandas as pd
 import streamlit as st
 
-from utils.data_loader import cargar_datos
+
 from utils.metrics import calcular_scores
 
+from utils.data_loader import (
+    COLUMN_MAPPING_CLIENTES,
+    cargar_datos,
+    normalizar_encabezados,
+)
+
+from utils.github_clientes import (
+    cargar_clientes_github,
+    guardar_clientes_github,
+    normalizar_numero_serie_valor,
+)
 
 # =====================================================
 # CONFIGURACIÓN
@@ -378,6 +389,118 @@ def filtrar_historico_por_poblacion(
 
 def mostrar_tabla_vacia(mensaje):
     st.info(mensaje)
+
+# =====================================================
+# EDICIÓN DE PARTICIPANTES
+# =====================================================
+
+COLUMNAS_CLIENTES_EDITABLES = [
+    "numero_serie",
+    "organizacion",
+    "org_id",
+    "sucursal",
+    "operario",
+    "cliente",
+    "telefono_operario",
+    "telefono_cliente",
+    "pais",
+    "provincia",
+    "ciudad",
+    "categoria",
+]
+
+
+def preparar_clientes_edicion(df_original):
+    """
+    Normaliza la estructura del CSV para que pueda ser
+    utilizada por los formularios de edición.
+
+    Las columnas no reconocidas se conservan.
+    """
+
+    df = normalizar_encabezados(
+        df_original,
+        COLUMN_MAPPING_CLIENTES,
+    )
+
+    for columna in COLUMNAS_CLIENTES_EDITABLES:
+        if columna not in df.columns:
+            df[columna] = ""
+
+    for columna in df.columns:
+        df[columna] = (
+            df[columna]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+
+    df["numero_serie"] = (
+        df["numero_serie"]
+        .apply(normalizar_numero_serie_valor)
+    )
+
+    df["categoria"] = (
+        df["categoria"]
+        .str.upper()
+        .replace(
+            {
+                "BASE": "BASIC",
+                "BÁSICO": "BASIC",
+                "BASICO": "BASIC",
+                "GUIADO BÁSICO": "BASIC",
+                "GUIADO BASICO": "BASIC",
+                "AVANZADO": "ELITE",
+                "GUIADO AVANZADO": "ELITE",
+            }
+        )
+    )
+
+    return df
+
+
+def valor_registro(registro, columna):
+    """
+    Devuelve un valor de texto seguro para utilizar como
+    valor inicial de un campo de formulario.
+    """
+
+    if columna not in registro.index:
+        return ""
+
+    valor = registro[columna]
+
+    if pd.isna(valor):
+        return ""
+
+    return str(valor).strip()
+
+
+def guardar_cambios_clientes(
+    df_clientes,
+    sha,
+    separador,
+    mensaje,
+):
+    """
+    Guarda el CSV, limpia la caché y muestra el resultado
+    después de recargar la aplicación.
+    """
+
+    guardar_clientes_github(
+        dataframe=df_clientes,
+        sha=sha,
+        separador=separador,
+        mensaje_commit=mensaje,
+    )
+
+    load_data.clear()
+
+    st.session_state[
+        "mensaje_edicion_clientes"
+    ] = "Los cambios se guardaron correctamente en GitHub."
+
+    st.rerun()
 
 
 # =====================================================
@@ -1390,20 +1513,26 @@ with tab_informe:
 # =====================================================
 
 with tab_clientes:
-    basic_clientes, elite_clientes = st.tabs(
+    basic_clientes, elite_clientes, edicion_clientes = st.tabs(
         [
             "Basic",
             "Elite",
+            "Edición",
         ]
     )
 
     columnas_clientes_deseadas = [
         "operario",
         "cliente",
+        "telefono_operario",
+        "telefono_cliente",
         "sucursal",
         "numero_serie",
         "organizacion",
         "org_id",
+        "pais",
+        "provincia",
+        "ciudad",
         "categoria",
         "fecha_inicio",
         "fecha_fin",
@@ -1505,3 +1634,623 @@ with tab_clientes:
                     ),
                 },
             )
+
+    # =================================================
+    # EDICIÓN
+    # =================================================
+
+    with edicion_clientes:
+        st.subheader(
+            "Administración de máquinas inscriptas"
+        )
+
+        st.caption(
+            "Los cambios realizados en esta sección se guardan "
+            "directamente en data/base_de_clientes.csv dentro "
+            "del repositorio de GitHub."
+        )
+
+        mensaje_guardado = st.session_state.pop(
+            "mensaje_edicion_clientes",
+            None,
+        )
+
+        if mensaje_guardado:
+            st.success(
+                mensaje_guardado
+            )
+
+        try:
+            clientes_raw, clientes_sha, separador_csv = (
+                cargar_clientes_github()
+            )
+
+            clientes_edicion = preparar_clientes_edicion(
+                clientes_raw
+            )
+
+        except Exception as error:
+            st.error(
+                "No fue posible cargar la base editable "
+                "de participantes."
+            )
+
+            with st.expander(
+                "Detalle técnico de la carga"
+            ):
+                st.exception(error)
+
+            st.stop()
+
+        editar_tab, agregar_tab, eliminar_tab = st.tabs(
+            [
+                "Editar máquina",
+                "Agregar máquina",
+                "Eliminar máquina",
+            ]
+        )
+
+        # =============================================
+        # EDITAR MÁQUINA
+        # =============================================
+
+        with editar_tab:
+            if clientes_edicion.empty:
+                st.info(
+                    "No hay máquinas disponibles para editar."
+                )
+
+            else:
+                opciones_series = sorted(
+                    clientes_edicion[
+                        "numero_serie"
+                    ]
+                    .dropna()
+                    .loc[
+                        lambda serie:
+                        serie.astype(str).str.strip().ne("")
+                    ]
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+
+                serie_editar = st.selectbox(
+                    "Seleccionar número de serie",
+                    options=opciones_series,
+                    key="serie_editar",
+                )
+
+                registro = (
+                    clientes_edicion[
+                        clientes_edicion["numero_serie"]
+                        == serie_editar
+                    ]
+                    .iloc[0]
+                )
+
+                with st.form(
+                    key=f"form_editar_{serie_editar}"
+                ):
+                    st.markdown(
+                        "#### Datos de inscripción"
+                    )
+
+                    columna_1, columna_2 = st.columns(2)
+
+                    with columna_1:
+                        numero_serie_editado = st.text_input(
+                            "Número de serie",
+                            value=valor_registro(
+                                registro,
+                                "numero_serie",
+                            ),
+                        )
+
+                        organizacion_editada = st.text_input(
+                            "Organización",
+                            value=valor_registro(
+                                registro,
+                                "organizacion",
+                            ),
+                        )
+
+                        org_id_editado = st.text_input(
+                            "Organization ID",
+                            value=valor_registro(
+                                registro,
+                                "org_id",
+                            ),
+                        )
+
+                        sucursal_editada = st.text_input(
+                            "Sucursal",
+                            value=valor_registro(
+                                registro,
+                                "sucursal",
+                            ),
+                        )
+
+                        operario_editado = st.text_input(
+                            "Nombre del operario",
+                            value=valor_registro(
+                                registro,
+                                "operario",
+                            ),
+                        )
+
+                        telefono_operario_editado = (
+                            st.text_input(
+                                "Teléfono del operario",
+                                value=valor_registro(
+                                    registro,
+                                    "telefono_operario",
+                                ),
+                            )
+                        )
+
+                    with columna_2:
+                        cliente_editado = st.text_input(
+                            "Nombre del cliente",
+                            value=valor_registro(
+                                registro,
+                                "cliente",
+                            ),
+                        )
+
+                        telefono_cliente_editado = (
+                            st.text_input(
+                                "Teléfono del cliente",
+                                value=valor_registro(
+                                    registro,
+                                    "telefono_cliente",
+                                ),
+                            )
+                        )
+
+                        pais_editado = st.text_input(
+                            "País",
+                            value=valor_registro(
+                                registro,
+                                "pais",
+                            ),
+                        )
+
+                        provincia_editada = st.text_input(
+                            "Provincia",
+                            value=valor_registro(
+                                registro,
+                                "provincia",
+                            ),
+                        )
+
+                        ciudad_editada = st.text_input(
+                            "Ciudad",
+                            value=valor_registro(
+                                registro,
+                                "ciudad",
+                            ),
+                        )
+
+                        categoria_actual = valor_registro(
+                            registro,
+                            "categoria",
+                        )
+
+                        indice_categoria = (
+                            1
+                            if categoria_actual == "ELITE"
+                            else 0
+                        )
+
+                        categoria_editada = st.selectbox(
+                            "Categoría",
+                            options=[
+                                "BASIC",
+                                "ELITE",
+                            ],
+                            index=indice_categoria,
+                        )
+
+                    guardar_edicion = st.form_submit_button(
+                        "Guardar cambios",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if guardar_edicion:
+                    serie_nueva = (
+                        normalizar_numero_serie_valor(
+                            numero_serie_editado
+                        )
+                    )
+
+                    if not serie_nueva:
+                        st.error(
+                            "El número de serie es obligatorio."
+                        )
+
+                    else:
+                        serie_duplicada = (
+                            clientes_edicion[
+                                "numero_serie"
+                            ]
+                            .ne(serie_editar)
+                            & clientes_edicion[
+                                "numero_serie"
+                            ].eq(serie_nueva)
+                        ).any()
+
+                        if serie_duplicada:
+                            st.error(
+                                "Ya existe otra máquina con "
+                                "ese número de serie."
+                            )
+
+                        else:
+                            mascara = (
+                                clientes_edicion[
+                                    "numero_serie"
+                                ]
+                                == serie_editar
+                            )
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "numero_serie",
+                            ] = serie_nueva
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "organizacion",
+                            ] = organizacion_editada.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "org_id",
+                            ] = org_id_editado.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "sucursal",
+                            ] = sucursal_editada.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "operario",
+                            ] = operario_editado.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "telefono_operario",
+                            ] = (
+                                telefono_operario_editado.strip()
+                            )
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "cliente",
+                            ] = cliente_editado.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "telefono_cliente",
+                            ] = (
+                                telefono_cliente_editado.strip()
+                            )
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "pais",
+                            ] = pais_editado.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "provincia",
+                            ] = provincia_editada.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "ciudad",
+                            ] = ciudad_editada.strip()
+
+                            clientes_edicion.loc[
+                                mascara,
+                                "categoria",
+                            ] = categoria_editada
+
+                            try:
+                                guardar_cambios_clientes(
+                                    df_clientes=clientes_edicion,
+                                    sha=clientes_sha,
+                                    separador=separador_csv,
+                                    mensaje=(
+                                        "Actualiza participante "
+                                        f"{serie_editar}"
+                                    ),
+                                )
+
+                            except Exception as error:
+                                st.error(
+                                    "No se pudieron guardar "
+                                    "los cambios."
+                                )
+
+                                with st.expander(
+                                    "Detalle técnico"
+                                ):
+                                    st.exception(error)
+
+        # =============================================
+        # AGREGAR MÁQUINA
+        # =============================================
+
+        with agregar_tab:
+            with st.form(
+                key="form_agregar_maquina",
+                clear_on_submit=False,
+            ):
+                st.markdown(
+                    "#### Nueva inscripción"
+                )
+
+                columna_1, columna_2 = st.columns(2)
+
+                with columna_1:
+                    nueva_serie = st.text_input(
+                        "Número de serie *"
+                    )
+
+                    nueva_organizacion = st.text_input(
+                        "Organización"
+                    )
+
+                    nuevo_org_id = st.text_input(
+                        "Organization ID"
+                    )
+
+                    nueva_sucursal = st.text_input(
+                        "Sucursal"
+                    )
+
+                    nuevo_operario = st.text_input(
+                        "Nombre del operario"
+                    )
+
+                    nuevo_telefono_operario = st.text_input(
+                        "Teléfono del operario"
+                    )
+
+                with columna_2:
+                    nuevo_cliente = st.text_input(
+                        "Nombre del cliente"
+                    )
+
+                    nuevo_telefono_cliente = st.text_input(
+                        "Teléfono del cliente"
+                    )
+
+                    nuevo_pais = st.text_input(
+                        "País"
+                    )
+
+                    nueva_provincia = st.text_input(
+                        "Provincia"
+                    )
+
+                    nueva_ciudad = st.text_input(
+                        "Ciudad"
+                    )
+
+                    nueva_categoria = st.selectbox(
+                        "Categoría",
+                        options=[
+                            "BASIC",
+                            "ELITE",
+                        ],
+                    )
+
+                agregar_maquina = st.form_submit_button(
+                    "Agregar máquina",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if agregar_maquina:
+                serie_normalizada = (
+                    normalizar_numero_serie_valor(
+                        nueva_serie
+                    )
+                )
+
+                if not serie_normalizada:
+                    st.error(
+                        "El número de serie es obligatorio."
+                    )
+
+                elif (
+                    clientes_edicion["numero_serie"]
+                    .eq(serie_normalizada)
+                    .any()
+                ):
+                    st.error(
+                        "Ya existe una máquina con ese "
+                        "número de serie."
+                    )
+
+                else:
+                    nueva_fila = {
+                        columna: ""
+                        for columna in clientes_edicion.columns
+                    }
+
+                    nueva_fila.update(
+                        {
+                            "numero_serie": serie_normalizada,
+                            "organizacion": (
+                                nueva_organizacion.strip()
+                            ),
+                            "org_id": nuevo_org_id.strip(),
+                            "sucursal": nueva_sucursal.strip(),
+                            "operario": nuevo_operario.strip(),
+                            "telefono_operario": (
+                                nuevo_telefono_operario.strip()
+                            ),
+                            "cliente": nuevo_cliente.strip(),
+                            "telefono_cliente": (
+                                nuevo_telefono_cliente.strip()
+                            ),
+                            "pais": nuevo_pais.strip(),
+                            "provincia": (
+                                nueva_provincia.strip()
+                            ),
+                            "ciudad": nueva_ciudad.strip(),
+                            "categoria": nueva_categoria,
+                        }
+                    )
+
+                    clientes_actualizados = pd.concat(
+                        [
+                            clientes_edicion,
+                            pd.DataFrame(
+                                [nueva_fila]
+                            ),
+                        ],
+                        ignore_index=True,
+                    )
+
+                    try:
+                        guardar_cambios_clientes(
+                            df_clientes=clientes_actualizados,
+                            sha=clientes_sha,
+                            separador=separador_csv,
+                            mensaje=(
+                                "Agrega participante "
+                                f"{serie_normalizada}"
+                            ),
+                        )
+
+                    except Exception as error:
+                        st.error(
+                            "No se pudo agregar la máquina."
+                        )
+
+                        with st.expander(
+                            "Detalle técnico"
+                        ):
+                            st.exception(error)
+
+        # =============================================
+        # ELIMINAR MÁQUINA
+        # =============================================
+
+        with eliminar_tab:
+            if clientes_edicion.empty:
+                st.info(
+                    "No hay máquinas disponibles "
+                    "para eliminar."
+                )
+
+            else:
+                opciones_eliminar = sorted(
+                    clientes_edicion[
+                        "numero_serie"
+                    ]
+                    .dropna()
+                    .loc[
+                        lambda serie:
+                        serie.astype(str).str.strip().ne("")
+                    ]
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+
+                serie_eliminar = st.selectbox(
+                    "Número de serie a eliminar",
+                    options=opciones_eliminar,
+                    key="serie_eliminar",
+                )
+
+                registro_eliminar = (
+                    clientes_edicion[
+                        clientes_edicion["numero_serie"]
+                        == serie_eliminar
+                    ]
+                    .iloc[0]
+                )
+
+                st.warning(
+                    "Esta operación eliminará la inscripción "
+                    "del CSV de participantes."
+                )
+
+                st.write(
+                    {
+                        "Número de serie": serie_eliminar,
+                        "Operario": valor_registro(
+                            registro_eliminar,
+                            "operario",
+                        ),
+                        "Cliente": valor_registro(
+                            registro_eliminar,
+                            "cliente",
+                        ),
+                        "Sucursal": valor_registro(
+                            registro_eliminar,
+                            "sucursal",
+                        ),
+                        "Categoría": valor_registro(
+                            registro_eliminar,
+                            "categoria",
+                        ),
+                    }
+                )
+
+                confirmar_eliminacion = st.checkbox(
+                    "Confirmo que deseo eliminar esta máquina",
+                    key=(
+                        f"confirmar_eliminar_"
+                        f"{serie_eliminar}"
+                    ),
+                )
+
+                eliminar_maquina = st.button(
+                    "Eliminar máquina",
+                    type="primary",
+                    disabled=not confirmar_eliminacion,
+                    use_container_width=True,
+                )
+
+                if eliminar_maquina:
+                    clientes_actualizados = (
+                        clientes_edicion[
+                            clientes_edicion[
+                                "numero_serie"
+                            ]
+                            != serie_eliminar
+                        ]
+                        .copy()
+                        .reset_index(drop=True)
+                    )
+
+                    try:
+                        guardar_cambios_clientes(
+                            df_clientes=clientes_actualizados,
+                            sha=clientes_sha,
+                            separador=separador_csv,
+                            mensaje=(
+                                "Elimina participante "
+                                f"{serie_eliminar}"
+                            ),
+                        )
+
+                    except Exception as error:
+                        st.error(
+                            "No se pudo eliminar la máquina."
+                        )
+
+                        with st.expander(
+                            "Detalle técnico"
+                        ):
+                            st.exception(error)
