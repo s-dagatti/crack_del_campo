@@ -21,7 +21,7 @@ from utils.github_clientes import (
 # =====================================================
 
 st.set_page_config(
-    page_title="Crack del Campo",
+    page_title="Crack del Campo | Tractores",
     page_icon="🚜",
     layout="wide",
 )
