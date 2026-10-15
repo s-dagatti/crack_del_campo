@@ -186,21 +186,20 @@ sucursales = sorted(
     .tolist()
 )
 
-sucursales_seleccionadas = st.sidebar.multiselect(
+sucursal_seleccionada = st.sidebar.selectbox(
     "Sucursal",
-    options=sucursales,
-    default=sucursales,
+    options=["Todas"] + sucursales,
+    index=0,
 )
 
 # Primero filtra sucursales para que el selector de clientes
 # muestre solamente clientes asociados a ellas.
 df_sidebar = df.copy()
 
-if sucursales_seleccionadas:
+if sucursal_seleccionada!= "Todas":
     df_sidebar = df_sidebar[
-        df_sidebar["sucursal"].isin(
-            sucursales_seleccionadas
-        )
+        df_sidebar["sucursal"]
+        == sucursal_seleccionada
     ]
 
 clientes = sorted(
@@ -270,11 +269,10 @@ if columna_fecha:
 
 df_filtrado = df.copy()
 
-if sucursales_seleccionadas:
+if sucursal_seleccionada!= "Todas":
     df_filtrado = df_filtrado[
-        df_filtrado["sucursal"].isin(
-            sucursales_seleccionadas
-        )
+        df_filtrado["sucursal"]
+        == sucursal_seleccionada
     ]
 
 if clientes_seleccionados:
