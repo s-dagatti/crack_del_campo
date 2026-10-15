@@ -23,14 +23,39 @@ st.caption("Seguimiento de participantes - Tractores")
 # FUNCIONES
 # =====================================================
 
-# La versión obliga a Streamlit a recalcular los datos cuando
-# cambia la lógica de scores o intervención.
-CACHE_VERSION = "scores_intervencion_v2"
+# Cambiar esta versión obliga a Streamlit a reconstruir
+# el dataframe cuando se modifica la lógica del tablero.
+CACHE_VERSION = "ranking_periodo_v3"
 
 
 @st.cache_data(ttl=3600)
 def load_data(cache_version):
+    """
+    Carga las fuentes, normaliza las categorías y calcula
+    los scores semanales.
+    """
+
+    # El parámetro se utiliza para invalidar la caché.
+    _ = cache_version
+
     datos = cargar_datos()
+
+    validar_columnas_carga = [
+        "categoria",
+    ]
+
+    faltantes = [
+        columna
+        for columna in validar_columnas_carga
+        if columna not in datos.columns
+    ]
+
+    if faltantes:
+        raise ValueError(
+            "No se puede normalizar la categoría. "
+            "Faltan las columnas: "
+            + ", ".join(faltantes)
+        )
 
     # La categoría debe normalizarse antes de calcular
     # la necesidad de intervención.
@@ -59,6 +84,13 @@ def load_data(cache_version):
 
 
 def promedio_seguro(df, columna):
+    """
+    Calcula el promedio numérico de una columna.
+
+    Devuelve 0 cuando el dataframe está vacío, la columna
+    no existe o no contiene valores numéricos.
+    """
+
     if df.empty or columna not in df.columns:
         return 0.0
 
@@ -74,6 +106,7 @@ def promedio_seguro(df, columna):
 
     return float(resultado)
 
+
 def construir_evolucion_semanal(
     df,
     metricas,
@@ -82,12 +115,12 @@ def construir_evolucion_semanal(
     """
     Construye la evolución semanal promedio de una categoría.
 
-    Devuelve un dataframe con:
-    - una fila por semana;
-    - una columna por indicador;
-    - valores ausentes considerados como 0.
-
-    La fecha utilizada para representar la semana es fecha_fin.
+    Reglas:
+    - Devuelve una fila por semana.
+    - Utiliza fecha_fin como fecha representativa.
+    - Las métricas ausentes aportan 0.
+    - Calcula el promedio de las máquinas incluidas en
+      la población seleccionada.
     """
 
     if df.empty:
@@ -121,7 +154,7 @@ def construir_evolucion_semanal(
         return pd.DataFrame()
 
     # Una tecnología sin dato representa que no hubo
-    # actividad durante esa semana, por lo que aporta 0.
+    # actividad durante esa semana.
     for metrica in metricas_disponibles:
         resultado[metrica] = (
             pd.to_numeric(
@@ -132,16 +165,18 @@ def construir_evolucion_semanal(
             .clip(lower=0, upper=100)
         )
 
-    # Promedio semanal de todas las máquinas que pertenecen
-    # a la categoría y cumplen los filtros seleccionados.
     evolucion = (
         resultado
         .groupby(
             "fecha_fin",
             as_index=False,
+            dropna=False,
         )[metricas_disponibles]
         .mean()
-        .sort_values("fecha_fin")
+        .sort_values(
+            "fecha_fin",
+            ascending=True,
+        )
     )
 
     if nombres_metricas:
@@ -158,12 +193,19 @@ def construir_evolucion_semanal(
     return evolucion
 
 
-def participantes_unicos(df):
+def consolidar_periodo(df):
     """
-    Construye una fila por número de serie para evitar que
-    el histórico semanal duplique participantes en el ranking.
+    Consolida todas las semanas seleccionadas en una fila
+    por número de serie.
 
-    Por ahora conserva el registro más reciente disponible.
+    Reglas:
+    - Las tecnologías se promedian durante el período.
+    - Un valor tecnológico ausente aporta 0.
+    - Las dimensiones descriptivas conservan el dato de
+      la fila más reciente.
+    - Los scores se recalculan con las métricas promedio.
+    - La intervención se clasifica según el score promedio
+      del período seleccionado.
     """
 
     if df.empty:
@@ -171,39 +213,167 @@ def participantes_unicos(df):
 
     resultado = df.copy()
 
-    columnas_fecha = [
-        "fecha",
-        "fecha_de_terminacion",
-        "fecha_fin",
-        "fecha_de_inicio",
+    # =================================================
+    # FECHAS
+    # =================================================
+
+    for columna_fecha in [
         "fecha_inicio",
+        "fecha_fin",
+    ]:
+        if columna_fecha in resultado.columns:
+            resultado[columna_fecha] = pd.to_datetime(
+                resultado[columna_fecha],
+                errors="coerce",
+                dayfirst=True,
+            ).dt.normalize()
+
+    # La fila más reciente queda primero. De esta forma,
+    # "first" conserva los datos descriptivos más actuales.
+    if "fecha_fin" in resultado.columns:
+        resultado = resultado.sort_values(
+            "fecha_fin",
+            ascending=False,
+            na_position="last",
+        )
+
+    # =================================================
+    # MÉTRICAS DEL PERÍODO
+    # =================================================
+
+    metricas_promedio = [
+        "autotrac",
+        "turn_automation",
+        "autopath",
+        "implement_guidance",
+        "efficiency_manager",
+        "field_cruise",
+        "cancelada",
+        "sin_definir",
+        "ignorada",
+        "ocio_controlable",
+        "score_ociosidad",
     ]
 
-    columna_fecha = next(
-        (
-            columna
-            for columna in columnas_fecha
-            if columna in resultado.columns
-        ),
-        None,
-    )
+    metricas_disponibles = [
+        columna
+        for columna in metricas_promedio
+        if columna in resultado.columns
+    ]
 
-    if columna_fecha:
-        resultado[columna_fecha] = pd.to_datetime(
-            resultado[columna_fecha],
-            errors="coerce",
-            dayfirst=True,
+    # Un valor ausente durante una semana aporta 0
+    # al promedio del período.
+    for columna in metricas_disponibles:
+        resultado[columna] = (
+            pd.to_numeric(
+                resultado[columna],
+                errors="coerce",
+            )
+            .fillna(0.0)
+            .clip(lower=0, upper=100)
         )
 
-        resultado = resultado.sort_values(
-            columna_fecha,
-            ascending=False,
-        )
+    # =================================================
+    # DIMENSIONES DESCRIPTIVAS
+    # =================================================
 
-    return resultado.drop_duplicates(
-        subset=["numero_serie"],
-        keep="first",
+    dimensiones = [
+        "operario",
+        "cliente",
+        "sucursal",
+        "organizacion",
+        "org_id",
+        "categoria",
+        "maquina",
+        "modelo",
+        "tipo",
+        "telefono",
+        "pais",
+        "provincia",
+        "ciudad",
+    ]
+
+    dimensiones_disponibles = [
+        columna
+        for columna in dimensiones
+        if columna in resultado.columns
+    ]
+
+    agregaciones = {
+        columna: "mean"
+        for columna in metricas_disponibles
+    }
+
+    agregaciones.update(
+        {
+            columna: "first"
+            for columna in dimensiones_disponibles
+        }
     )
+
+    # Las fechas del consolidado muestran el rango real
+    # cubierto por cada máquina.
+    if "fecha_inicio" in resultado.columns:
+        agregaciones["fecha_inicio"] = "min"
+
+    if "fecha_fin" in resultado.columns:
+        agregaciones["fecha_fin"] = "max"
+
+    consolidado = (
+        resultado
+        .groupby(
+            "numero_serie",
+            as_index=False,
+            dropna=False,
+        )
+        .agg(agregaciones)
+    )
+
+    # Recalcula los scores y la intervención utilizando
+    # los promedios del período.
+    consolidado = calcular_scores(
+        consolidado
+    )
+
+    return consolidado
+
+
+def filtrar_historico_por_poblacion(
+    historico,
+    consolidado,
+):
+    """
+    Restringe el histórico a las máquinas presentes en
+    el dataframe consolidado final.
+
+    Esto permite que la evolución temporal use la misma
+    población que los KPI y el ranking.
+    """
+
+    if historico.empty:
+        return historico.copy()
+
+    if consolidado.empty:
+        return historico.iloc[0:0].copy()
+
+    if (
+        "numero_serie" not in historico.columns
+        or "numero_serie" not in consolidado.columns
+    ):
+        return historico.iloc[0:0].copy()
+
+    series_seleccionadas = (
+        consolidado["numero_serie"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    return historico[
+        historico["numero_serie"].isin(
+            series_seleccionadas
+        )
+    ].copy()
 
 
 def mostrar_tabla_vacia(mensaje):
@@ -215,7 +385,9 @@ def mostrar_tabla_vacia(mensaje):
 # =====================================================
 
 try:
-    df = load_data(CACHE_VERSION)
+    df = load_data(
+        CACHE_VERSION
+    )
 
 except Exception as error:
     st.error(
@@ -228,12 +400,18 @@ except Exception as error:
     st.stop()
 
 
+# =====================================================
+# VALIDACIÓN DEL DATAFRAME
+# =====================================================
+
 columnas_obligatorias = [
     "numero_serie",
     "sucursal",
     "cliente",
     "operario",
     "categoria",
+    "fecha_inicio",
+    "fecha_fin",
     "autotrac",
     "score_basic",
     "score_elite",
@@ -253,13 +431,15 @@ if columnas_faltantes:
     )
 
     with st.expander("Columnas disponibles"):
-        st.write(df.columns.tolist())
+        st.write(
+            df.columns.tolist()
+        )
 
     st.stop()
 
 
 # =====================================================
-# NORMALIZACIÓN DE CATEGORÍAS
+# NORMALIZACIÓN FINAL
 # =====================================================
 
 df["categoria"] = (
@@ -268,19 +448,44 @@ df["categoria"] = (
     .astype(str)
     .str.strip()
     .str.upper()
+    .replace(
+        {
+            "BASE": "BASIC",
+            "BÁSICO": "BASIC",
+            "BASICO": "BASIC",
+            "GUIADO BÁSICO": "BASIC",
+            "GUIADO BASICO": "BASIC",
+            "AVANZADO": "ELITE",
+            "GUIADO AVANZADO": "ELITE",
+        }
+    )
 )
 
-df["categoria"] = df["categoria"].replace(
-    {
-        "BASE": "BASIC",
-        "BÁSICO": "BASIC",
-        "BASICO": "BASIC",
-        "GUIADO BÁSICO": "BASIC",
-        "GUIADO BASICO": "BASIC",
-        "AVANZADO": "ELITE",
-        "GUIADO AVANZADO": "ELITE",
-    }
+df["sucursal"] = (
+    df["sucursal"]
+    .fillna("")
+    .astype(str)
+    .str.strip()
 )
+
+df["cliente"] = (
+    df["cliente"]
+    .fillna("")
+    .astype(str)
+    .str.strip()
+)
+
+df["fecha_inicio"] = pd.to_datetime(
+    df["fecha_inicio"],
+    errors="coerce",
+    dayfirst=True,
+).dt.normalize()
+
+df["fecha_fin"] = pd.to_datetime(
+    df["fecha_fin"],
+    errors="coerce",
+    dayfirst=True,
+).dt.normalize()
 
 
 # =====================================================
@@ -296,9 +501,6 @@ st.sidebar.header("Filtros")
 
 sucursales = sorted(
     df["sucursal"]
-    .dropna()
-    .astype(str)
-    .str.strip()
     .loc[lambda serie: serie.ne("")]
     .unique()
     .tolist()
@@ -306,7 +508,10 @@ sucursales = sorted(
 
 sucursal_seleccionada = st.sidebar.selectbox(
     "Sucursal",
-    options=["Todas"] + sucursales,
+    options=[
+        "Todas",
+        *sucursales,
+    ],
     index=0,
 )
 
@@ -315,7 +520,6 @@ sucursal_seleccionada = st.sidebar.selectbox(
 # FILTRO DE CLIENTES
 # =====================================================
 
-# La lista de clientes depende de la sucursal seleccionada.
 df_sidebar = df.copy()
 
 if sucursal_seleccionada!= "Todas":
@@ -326,9 +530,6 @@ if sucursal_seleccionada!= "Todas":
 
 clientes = sorted(
     df_sidebar["cliente"]
-    .dropna()
-    .astype(str)
-    .str.strip()
     .loc[lambda serie: serie.ne("")]
     .unique()
     .tolist()
@@ -357,46 +558,34 @@ intervencion_seleccionada = st.sidebar.selectbox(
     options=opciones_intervencion,
     index=0,
 )
+
+
 # =====================================================
 # FILTRO DE FECHAS
 # =====================================================
 
 periodo_seleccionado = None
 
+fecha_minima = df["fecha_inicio"].min()
+fecha_maxima = df["fecha_fin"].max()
+
 if (
-    "fecha_inicio" in df.columns
-    and "fecha_fin" in df.columns
+    pd.notna(fecha_minima)
+    and pd.notna(fecha_maxima)
 ):
-    df["fecha_inicio"] = pd.to_datetime(
-        df["fecha_inicio"],
-        errors="coerce",
-        dayfirst=True,
-    ).dt.normalize()
+    periodo_seleccionado = st.sidebar.date_input(
+        "Periodo",
+        value=(
+            fecha_minima.date(),
+            fecha_maxima.date(),
+        ),
+        min_value=fecha_minima.date(),
+        max_value=fecha_maxima.date(),
+    )
 
-    df["fecha_fin"] = pd.to_datetime(
-        df["fecha_fin"],
-        errors="coerce",
-        dayfirst=True,
-    ).dt.normalize()
 
-    fecha_minima = df["fecha_inicio"].min()
-    fecha_maxima = df["fecha_fin"].max()
-
-    if (
-        pd.notna(fecha_minima)
-        and pd.notna(fecha_maxima)
-    ):
-        periodo_seleccionado = st.sidebar.date_input(
-            "Periodo",
-            value=(
-                fecha_minima.date(),
-                fecha_maxima.date(),
-            ),
-            min_value=fecha_minima.date(),
-            max_value=fecha_maxima.date(),
-        )
 # =====================================================
-# APLICACIÓN DE FILTROS
+# APLICACIÓN DE FILTROS HISTÓRICOS
 # =====================================================
 
 df_filtrado = df.copy()
@@ -426,7 +615,7 @@ if clientes_seleccionados:
 
 
 # =====================================================
-# PERIODO
+# PERÍODO
 # =====================================================
 
 if (
@@ -436,8 +625,6 @@ if (
         (tuple, list),
     )
     and len(periodo_seleccionado) == 2
-    and "fecha_inicio" in df_filtrado.columns
-    and "fecha_fin" in df_filtrado.columns
 ):
     fecha_desde = pd.Timestamp(
         periodo_seleccionado[0]
@@ -447,7 +634,8 @@ if (
         periodo_seleccionado[1]
     ).normalize()
 
-    # Incluye las semanas que se superponen con el rango.
+    # Incluye cualquier semana que se superponga
+    # con el rango seleccionado.
     df_filtrado = df_filtrado[
         (
             df_filtrado["fecha_inicio"]
@@ -457,28 +645,118 @@ if (
             df_filtrado["fecha_fin"]
             >= fecha_desde
         )
-    ]
+    ].copy()
 
 
 # =====================================================
-# NECESIDAD DE INTERVENCIÓN
+# HISTÓRICO POR CATEGORÍA
 # =====================================================
 
+basic_historico = df_filtrado[
+    df_filtrado["categoria"] == "BASIC"
+].copy()
+
+elite_historico = df_filtrado[
+    df_filtrado["categoria"] == "ELITE"
+].copy()
+
+
+# =====================================================
+# CONSOLIDACIÓN DEL PERÍODO
+# =====================================================
+
+basic_periodo = consolidar_periodo(
+    basic_historico
+)
+
+elite_periodo = consolidar_periodo(
+    elite_historico
+)
+
+
+# =====================================================
+# INTERVENCIÓN DEL PERÍODO
+# =====================================================
+
+# Este filtro se aplica después de consolidar las semanas,
+# porque la intervención debe depender del score promedio
+# del período y no de una semana individual.
 if intervencion_seleccionada!= "Todas":
-    df_filtrado = df_filtrado[
-        df_filtrado["necesidad_intervencion"]
-        == intervencion_seleccionada
-    ]
+    if (
+        not basic_periodo.empty
+        and "necesidad_intervencion"
+        in basic_periodo.columns
+    ):
+        basic_periodo = basic_periodo[
+            basic_periodo[
+                "necesidad_intervencion"
+            ]
+            == intervencion_seleccionada
+        ].copy()
+
+    if (
+        not elite_periodo.empty
+        and "necesidad_intervencion"
+        in elite_periodo.columns
+    ):
+        elite_periodo = elite_periodo[
+            elite_periodo[
+                "necesidad_intervencion"
+            ]
+            == intervencion_seleccionada
+        ].copy()
+
+
+# =====================================================
+# ALINEACIÓN DE HISTÓRICOS
+# =====================================================
+
+# La evolución utiliza la misma población seleccionada
+# para los KPI, rankings y tablas de clientes.
+basic_historico = filtrar_historico_por_poblacion(
+    basic_historico,
+    basic_periodo,
+)
+
+elite_historico = filtrar_historico_por_poblacion(
+    elite_historico,
+    elite_periodo,
+)
 
 
 # =====================================================
 # RESUMEN DE FILTROS
 # =====================================================
 
+series_basic = (
+    basic_periodo["numero_serie"]
+    if "numero_serie" in basic_periodo.columns
+    else pd.Series(dtype="string")
+)
+
+series_elite = (
+    elite_periodo["numero_serie"]
+    if "numero_serie" in elite_periodo.columns
+    else pd.Series(dtype="string")
+)
+
+maquinas_seleccionadas = (
+    pd.concat(
+        [
+            series_basic,
+            series_elite,
+        ],
+        ignore_index=True,
+    )
+    .dropna()
+    .nunique()
+)
+
 st.sidebar.caption(
-    f"{df_filtrado['numero_serie'].nunique()} "
+    f"{maquinas_seleccionadas} "
     "máquinas seleccionadas"
 )
+
 
 # =====================================================
 # TABS PRINCIPALES
@@ -510,13 +788,8 @@ with tab_general:
     # =================================================
 
     with basic_tab:
-        basic_historico = df_filtrado[
-            df_filtrado["categoria"] == "BASIC"
-        ].copy()
-
-        basic = participantes_unicos(
-            basic_historico
-        )
+        # Una fila por máquina con el promedio del período.
+        basic = basic_periodo.copy()
 
         st.subheader("Categoría Basic")
 
@@ -524,31 +797,45 @@ with tab_general:
 
         c1.metric(
             "Participantes",
-            basic["numero_serie"].nunique(),
+            (
+                basic["numero_serie"].nunique()
+                if "numero_serie" in basic.columns
+                else 0
+            ),
         )
 
         c2.metric(
             "Clientes",
-            basic["cliente"].nunique(),
+            (
+                basic["cliente"].nunique()
+                if "cliente" in basic.columns
+                else 0
+            ),
         )
 
         c3.metric(
             "AutoTrac promedio",
-            f"{promedio_seguro(basic, 'autotrac'):.1f}%",
+            (
+                f"{promedio_seguro(basic, 'autotrac'):.1f}%"
+            ),
         )
 
         c4.metric(
             "Score Basic",
-            f"{promedio_seguro(basic, 'score_basic'):.1f}",
+            (
+                f"{promedio_seguro(basic, 'score_basic'):.1f}"
+            ),
         )
-        
+
         # =================================================
         # EVOLUCIÓN TEMPORAL BASIC
         # =================================================
-        
+
         st.divider()
-        st.subheader("Evolución temporal Basic")
-        
+        st.subheader(
+            "Evolución temporal Basic"
+        )
+
         evolucion_basic = construir_evolucion_semanal(
             basic_historico,
             metricas=[
@@ -560,38 +847,67 @@ with tab_general:
                 "score_basic": "Score Basic",
             },
         )
-        
+
         if evolucion_basic.empty:
             st.info(
-                "No hay datos históricos disponibles para construir "
-                "la evolución temporal de la categoría Basic."
+                "No hay datos históricos disponibles "
+                "para construir la evolución temporal "
+                "de la categoría Basic."
             )
-        
+
         else:
             st.line_chart(
                 evolucion_basic,
                 use_container_width=True,
             )
-        
+
             if len(evolucion_basic) == 1:
                 st.caption(
-                    "Actualmente hay una sola semana disponible. "
-                    "La evolución se completará automáticamente "
-                    "cuando se incorporen nuevos períodos."
+                    "Actualmente hay una sola semana "
+                    "disponible. La evolución se completará "
+                    "automáticamente cuando se incorporen "
+                    "nuevos períodos."
                 )
-        
+
+            with st.expander(
+                "Ver datos semanales Basic"
+            ):
+                st.dataframe(
+                    evolucion_basic.reset_index(),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Semana": (
+                            st.column_config.DateColumn(
+                                format="DD/MM/YYYY"
+                            )
+                        ),
+                        "AutoTrac": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Score Basic": (
+                            st.column_config.NumberColumn(
+                                format="%.1f"
+                            )
+                        ),
+                    },
+                )
+
         # =================================================
         # RANKING BASIC
         # =================================================
-        
+
         st.divider()
         st.subheader("Ranking Basic")
-        
+
         if basic.empty:
             mostrar_tabla_vacia(
-                "No hay participantes Basic para los filtros seleccionados."
+                "No hay participantes Basic para "
+                "los filtros seleccionados."
             )
-        
+
         else:
             ranking_basic = (
                 basic
@@ -601,7 +917,7 @@ with tab_general:
                 )
                 .reset_index(drop=True)
             )
-        
+
             ranking_basic.insert(
                 0,
                 "posición",
@@ -610,43 +926,47 @@ with tab_general:
                     len(ranking_basic) + 1,
                 ),
             )
-        
+
             columnas_ranking_basic = [
                 "posición",
                 "operario",
                 "cliente",
                 "sucursal",
                 "numero_serie",
+                "fecha_inicio",
+                "fecha_fin",
                 "autotrac",
                 "score_basic",
                 "necesidad_intervencion",
             ]
-        
+
             faltantes_ranking_basic = [
                 columna
                 for columna in columnas_ranking_basic
                 if columna not in ranking_basic.columns
             ]
-        
+
             if faltantes_ranking_basic:
                 st.error(
-                    "No se puede construir el ranking Basic. "
-                    "Faltan las columnas: "
-                    + ", ".join(faltantes_ranking_basic)
+                    "No se puede construir el ranking "
+                    "Basic. Faltan las columnas: "
+                    + ", ".join(
+                        faltantes_ranking_basic
+                    )
                 )
-        
+
                 with st.expander(
                     "Columnas disponibles en el ranking Basic"
                 ):
                     st.write(
                         ranking_basic.columns.tolist()
                     )
-        
+
             else:
                 tabla_basic = ranking_basic[
                     columnas_ranking_basic
                 ].copy()
-        
+
                 tabla_basic = tabla_basic.rename(
                     columns={
                         "posición": "Posición",
@@ -654,6 +974,8 @@ with tab_general:
                         "cliente": "Cliente",
                         "sucursal": "Sucursal",
                         "numero_serie": "N.º de serie",
+                        "fecha_inicio": "Desde",
+                        "fecha_fin": "Hasta",
                         "autotrac": "AutoTrac (%)",
                         "score_basic": "Score Basic",
                         "necesidad_intervencion": (
@@ -661,7 +983,7 @@ with tab_general:
                         ),
                     }
                 )
-        
+
                 st.dataframe(
                     tabla_basic,
                     use_container_width=True,
@@ -671,6 +993,16 @@ with tab_general:
                             st.column_config.NumberColumn(
                                 format="%d",
                                 width="small",
+                            )
+                        ),
+                        "Desde": (
+                            st.column_config.DateColumn(
+                                format="DD/MM/YYYY"
+                            )
+                        ),
+                        "Hasta": (
+                            st.column_config.DateColumn(
+                                format="DD/MM/YYYY"
                             )
                         ),
                         "AutoTrac (%)": (
@@ -690,18 +1022,14 @@ with tab_general:
                         ),
                     },
                 )
+
     # =================================================
     # ELITE
     # =================================================
 
     with elite_tab:
-        elite_historico = df_filtrado[
-            df_filtrado["categoria"] == "ELITE"
-        ].copy()
-
-        elite = participantes_unicos(
-            elite_historico
-        )
+        # Una fila por máquina con el promedio del período.
+        elite = elite_periodo.copy()
 
         st.subheader("Categoría Elite")
 
@@ -709,36 +1037,50 @@ with tab_general:
 
         c1.metric(
             "Participantes",
-            elite["numero_serie"].nunique(),
+            (
+                elite["numero_serie"].nunique()
+                if "numero_serie" in elite.columns
+                else 0
+            ),
         )
 
         c2.metric(
             "Score Elite",
-            f"{promedio_seguro(elite, 'score_elite'):.1f}",
+            (
+                f"{promedio_seguro(elite, 'score_elite'):.1f}"
+            ),
         )
 
         c3.metric(
             "AutoTrac",
-            f"{promedio_seguro(elite, 'autotrac'):.1f}%",
+            (
+                f"{promedio_seguro(elite, 'autotrac'):.1f}%"
+            ),
         )
 
         c4.metric(
             "Turn Automation",
-            f"{promedio_seguro(elite, 'turn_automation'):.1f}%",
+            (
+                f"{promedio_seguro(elite, 'turn_automation'):.1f}%"
+            ),
         )
 
         c5.metric(
             "Ocio controlable",
-            f"{promedio_seguro(elite, 'ocio_controlable'):.1f}%",
+            (
+                f"{promedio_seguro(elite, 'ocio_controlable'):.1f}%"
+            ),
         )
-        
+
         # =================================================
         # EVOLUCIÓN TEMPORAL ELITE
         # =================================================
-        
+
         st.divider()
-        st.subheader("Evolución temporal Elite")
-        
+        st.subheader(
+            "Evolución temporal Elite"
+        )
+
         evolucion_elite = construir_evolucion_semanal(
             elite_historico,
             metricas=[
@@ -754,46 +1096,115 @@ with tab_general:
             nombres_metricas={
                 "score_elite": "Score Elite",
                 "autotrac": "AutoTrac",
-                "turn_automation": "Turn Automation",
+                "turn_automation": (
+                    "Turn Automation"
+                ),
                 "autopath": "AutoPath",
-                "implement_guidance": "Implement Guidance",
-                "efficiency_manager": "Efficiency Manager",
-                "field_cruise": "Field Cruise",
-                "ocio_controlable": "Ocio controlable",
+                "implement_guidance": (
+                    "Implement Guidance"
+                ),
+                "efficiency_manager": (
+                    "Efficiency Manager"
+                ),
+                "field_cruise": (
+                    "Field Cruise"
+                ),
+                "ocio_controlable": (
+                    "Ocio controlable"
+                ),
             },
         )
-        
+
         if evolucion_elite.empty:
             st.info(
-                "No hay datos históricos disponibles para construir "
-                "la evolución temporal de la categoría Elite."
+                "No hay datos históricos disponibles "
+                "para construir la evolución temporal "
+                "de la categoría Elite."
             )
-        
+
         else:
             st.line_chart(
                 evolucion_elite,
                 use_container_width=True,
             )
-        
+
             if len(evolucion_elite) == 1:
                 st.caption(
-                    "Actualmente hay una sola semana disponible. "
-                    "La evolución se completará automáticamente "
-                    "cuando se incorporen nuevos períodos."
+                    "Actualmente hay una sola semana "
+                    "disponible. La evolución se completará "
+                    "automáticamente cuando se incorporen "
+                    "nuevos períodos."
                 )
-        
+
+            with st.expander(
+                "Ver datos semanales Elite"
+            ):
+                st.dataframe(
+                    evolucion_elite.reset_index(),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Semana": (
+                            st.column_config.DateColumn(
+                                format="DD/MM/YYYY"
+                            )
+                        ),
+                        "Score Elite": (
+                            st.column_config.NumberColumn(
+                                format="%.1f"
+                            )
+                        ),
+                        "AutoTrac": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Turn Automation": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "AutoPath": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Implement Guidance": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Efficiency Manager": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Field Cruise": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Ocio controlable": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                    },
+                )
+
         # =================================================
         # RANKING ELITE
         # =================================================
-        
+
         st.divider()
         st.subheader("Ranking Elite")
-        
+
         if elite.empty:
             mostrar_tabla_vacia(
-                "No hay participantes Elite para los filtros seleccionados."
+                "No hay participantes Elite para "
+                "los filtros seleccionados."
             )
-        
+
         else:
             ranking_elite = (
                 elite
@@ -803,7 +1214,7 @@ with tab_general:
                 )
                 .reset_index(drop=True)
             )
-        
+
             ranking_elite.insert(
                 0,
                 "posición",
@@ -812,13 +1223,15 @@ with tab_general:
                     len(ranking_elite) + 1,
                 ),
             )
-        
+
             columnas_ranking_elite = [
                 "posición",
                 "operario",
                 "cliente",
                 "sucursal",
                 "numero_serie",
+                "fecha_inicio",
+                "fecha_fin",
                 "autotrac",
                 "turn_automation",
                 "autopath",
@@ -829,32 +1242,34 @@ with tab_general:
                 "score_elite",
                 "necesidad_intervencion",
             ]
-        
+
             faltantes_ranking_elite = [
                 columna
                 for columna in columnas_ranking_elite
                 if columna not in ranking_elite.columns
             ]
-        
+
             if faltantes_ranking_elite:
                 st.error(
-                    "No se puede construir el ranking Elite. "
-                    "Faltan las columnas: "
-                    + ", ".join(faltantes_ranking_elite)
+                    "No se puede construir el ranking "
+                    "Elite. Faltan las columnas: "
+                    + ", ".join(
+                        faltantes_ranking_elite
+                    )
                 )
-        
+
                 with st.expander(
                     "Columnas disponibles en el ranking Elite"
                 ):
                     st.write(
                         ranking_elite.columns.tolist()
                     )
-        
+
             else:
                 tabla_elite = ranking_elite[
                     columnas_ranking_elite
                 ].copy()
-        
+
                 tabla_elite = tabla_elite.rename(
                     columns={
                         "posición": "Posición",
@@ -862,11 +1277,15 @@ with tab_general:
                         "cliente": "Cliente",
                         "sucursal": "Sucursal",
                         "numero_serie": "N.º de serie",
+                        "fecha_inicio": "Desde",
+                        "fecha_fin": "Hasta",
                         "autotrac": "AutoTrac (%)",
                         "turn_automation": (
                             "Turn Automation (%)"
                         ),
-                        "autopath": "AutoPath (%)",
+                        "autopath": (
+                            "AutoPath (%)"
+                        ),
                         "implement_guidance": (
                             "Implement Guidance (%)"
                         ),
@@ -885,7 +1304,7 @@ with tab_general:
                         ),
                     }
                 )
-        
+
                 st.dataframe(
                     tabla_elite,
                     use_container_width=True,
@@ -895,6 +1314,16 @@ with tab_general:
                             st.column_config.NumberColumn(
                                 format="%d",
                                 width="small",
+                            )
+                        ),
+                        "Desde": (
+                            st.column_config.DateColumn(
+                                format="DD/MM/YYYY"
+                            )
+                        ),
+                        "Hasta": (
+                            st.column_config.DateColumn(
+                                format="DD/MM/YYYY"
                             )
                         ),
                         "AutoTrac (%)": (
@@ -944,7 +1373,7 @@ with tab_general:
                         ),
                     },
                 )
-    
+
 
 # =====================================================
 # TAB INFORME
@@ -968,56 +1397,111 @@ with tab_clientes:
         ]
     )
 
-    columnas_clientes = [
-        columna
-        for columna in [
-            "operario",
-            "cliente",
-            "sucursal",
-            "numero_serie",
-            "organizacion",
-            "org_id",
-            "categoria",
-            "necesidad_intervencion",
-        ]
-        if columna in df_filtrado.columns
+    columnas_clientes_deseadas = [
+        "operario",
+        "cliente",
+        "sucursal",
+        "numero_serie",
+        "organizacion",
+        "org_id",
+        "categoria",
+        "fecha_inicio",
+        "fecha_fin",
+        "necesidad_intervencion",
     ]
 
+    # =================================================
+    # CLIENTES BASIC
+    # =================================================
+
     with basic_clientes:
-        datos_basic = participantes_unicos(
-            df_filtrado[
-                df_filtrado["categoria"] == "BASIC"
-            ].copy()
-        )
-    
+        datos_basic = basic_periodo.copy()
+
+        columnas_basic_clientes = [
+            columna
+            for columna in columnas_clientes_deseadas
+            if columna in datos_basic.columns
+        ]
+
         if datos_basic.empty:
             mostrar_tabla_vacia(
-                "No hay clientes Basic para los filtros seleccionados."
+                "No hay clientes Basic para "
+                "los filtros seleccionados."
             )
-    
+
         else:
             st.dataframe(
-                datos_basic[columnas_clientes],
+                datos_basic[
+                    columnas_basic_clientes
+                ],
                 use_container_width=True,
                 hide_index=True,
+                column_config={
+                    "fecha_inicio": (
+                        st.column_config.DateColumn(
+                            "Desde",
+                            format="DD/MM/YYYY",
+                        )
+                    ),
+                    "fecha_fin": (
+                        st.column_config.DateColumn(
+                            "Hasta",
+                            format="DD/MM/YYYY",
+                        )
+                    ),
+                    "necesidad_intervencion": (
+                        st.column_config.TextColumn(
+                            "Intervención",
+                            width="medium",
+                        )
+                    ),
+                },
             )
-    
-    
+
+    # =================================================
+    # CLIENTES ELITE
+    # =================================================
+
     with elite_clientes:
-        datos_elite = participantes_unicos(
-            df_filtrado[
-                df_filtrado["categoria"] == "ELITE"
-            ].copy()
-        )
-    
+        datos_elite = elite_periodo.copy()
+
+        columnas_elite_clientes = [
+            columna
+            for columna in columnas_clientes_deseadas
+            if columna in datos_elite.columns
+        ]
+
         if datos_elite.empty:
             mostrar_tabla_vacia(
-                "No hay clientes Elite para los filtros seleccionados."
+                "No hay clientes Elite para "
+                "los filtros seleccionados."
             )
-    
+
         else:
             st.dataframe(
-                datos_elite[columnas_clientes],
+                datos_elite[
+                    columnas_elite_clientes
+                ],
                 use_container_width=True,
                 hide_index=True,
+                column_config={
+                    "fecha_inicio": (
+                        st.column_config.DateColumn(
+                            "Desde",
+                            format="DD/MM/YYYY",
+                        )
+                    ),
+                    "fecha_fin": (
+                        st.column_config.DateColumn(
+                            "Hasta",
+                            format="DD/MM/YYYY",
+                        )
+                    ),
+                    "necesidad_intervencion": (
+                        st.column_config.TextColumn(
+                            "Intervención",
+                            width="medium",
+                        )
+                    ),
+                },
             )
