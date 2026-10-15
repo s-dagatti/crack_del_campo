@@ -806,9 +806,11 @@ sucursal_seleccionada = st.sidebar.selectbox(
 
 
 # =====================================================
-# FILTRO DE CLIENTES
+# FILTRO DE ORGANIZACIONES
 # =====================================================
 
+# La lista de organizaciones depende de la sucursal
+# seleccionada.
 df_sidebar = df.copy()
 
 if sucursal_seleccionada!= "Todas":
@@ -817,16 +819,19 @@ if sucursal_seleccionada!= "Todas":
         == sucursal_seleccionada
     ]
 
-clientes = sorted(
-    df_sidebar["cliente"]
+organizaciones = sorted(
+    df_sidebar["organizacion"]
+    .fillna("")
+    .astype(str)
+    .str.strip()
     .loc[lambda serie: serie.ne("")]
     .unique()
     .tolist()
 )
 
-clientes_seleccionados = st.sidebar.multiselect(
-    "Cliente",
-    options=clientes,
+organizaciones_seleccionadas = st.sidebar.multiselect(
+    "Organización",
+    options=organizaciones,
     default=[],
 )
 
