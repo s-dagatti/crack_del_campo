@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from utils.github_clientes import cargar_clientes_github
 
 # =====================================================
 # RUTAS Y URL
@@ -65,19 +66,27 @@ COLUMN_MAPPING_CLIENTES = {
     "nombre_completo_del_operador": "operario",
     "operario": "operario",
     "operador": "operario",
-
-    # Teléfono
-    "telefono": "telefono",
-    "numero_de_telefono": "telefono",
-    "nro_telefono": "telefono",
-    "whatsapp": "telefono",
-
+    
     # Categoría
     "categoria": "categoria",
     "segmento": "categoria",
     "crack_campo": "categoria",
     "categoria_crack_del_campo": "categoria",
     "segmento_crack_del_campo": "categoria",
+
+    # Teléfono del operario
+    "telefono_operario": "telefono_operario",
+    "telefono_del_operario": "telefono_operario",
+    "numero_de_telefono_del_operario": "telefono_operario",
+    "nro_telefono_operario": "telefono_operario",
+    "whatsapp_operario": "telefono_operario",
+    
+    # Teléfono del cliente
+    "telefono_cliente": "telefono_cliente",
+    "telefono_del_cliente": "telefono_cliente",
+    "numero_de_telefono_del_cliente": "telefono_cliente",
+    "nro_telefono_cliente": "telefono_cliente",
+    "whatsapp_cliente": "telefono_cliente",
 }
 
 
@@ -408,15 +417,12 @@ def normalizar_fechas(df):
 # =====================================================
 
 def cargar_clientes():
-    if not CLIENTES_FILE.exists():
-        raise FileNotFoundError(
-            f"No se encontró la base de clientes: "
-            f"{CLIENTES_FILE}"
-        )
+    """
+    Carga la versión actual de la base de participantes
+    directamente desde GitHub.
+    """
 
-    df = leer_csv_flexible(
-        CLIENTES_FILE
-    )
+    df, _, _ = cargar_clientes_github()
 
     df = normalizar_encabezados(
         df,
@@ -431,8 +437,8 @@ def cargar_clientes():
 
     df = normalizar_numero_serie(df)
 
-    # La dimensión de clientes debe tener una sola fila
-    # por número de serie.
+    # Una máquina debe aparecer una sola vez en la
+    # dimensión de participantes.
     df = df.drop_duplicates(
         subset=["numero_serie"],
         keep="first",
