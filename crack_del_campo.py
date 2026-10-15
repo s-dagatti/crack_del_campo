@@ -74,6 +74,89 @@ def promedio_seguro(df, columna):
 
     return float(resultado)
 
+def construir_evolucion_semanal(
+    df,
+    metricas,
+    nombres_metricas=None,
+):
+    """
+    Construye la evolución semanal promedio de una categoría.
+
+    Devuelve un dataframe con:
+    - una fila por semana;
+    - una columna por indicador;
+    - valores ausentes considerados como 0.
+
+    La fecha utilizada para representar la semana es fecha_fin.
+    """
+
+    if df.empty:
+        return pd.DataFrame()
+
+    if "fecha_fin" not in df.columns:
+        return pd.DataFrame()
+
+    resultado = df.copy()
+
+    resultado["fecha_fin"] = pd.to_datetime(
+        resultado["fecha_fin"],
+        errors="coerce",
+        dayfirst=True,
+    ).dt.normalize()
+
+    resultado = resultado[
+        resultado["fecha_fin"].notna()
+    ].copy()
+
+    if resultado.empty:
+        return pd.DataFrame()
+
+    metricas_disponibles = [
+        metrica
+        for metrica in metricas
+        if metrica in resultado.columns
+    ]
+
+    if not metricas_disponibles:
+        return pd.DataFrame()
+
+    # Una tecnología sin dato representa que no hubo
+    # actividad durante esa semana, por lo que aporta 0.
+    for metrica in metricas_disponibles:
+        resultado[metrica] = (
+            pd.to_numeric(
+                resultado[metrica],
+                errors="coerce",
+            )
+            .fillna(0.0)
+            .clip(lower=0, upper=100)
+        )
+
+    # Promedio semanal de todas las máquinas que pertenecen
+    # a la categoría y cumplen los filtros seleccionados.
+    evolucion = (
+        resultado
+        .groupby(
+            "fecha_fin",
+            as_index=False,
+        )[metricas_disponibles]
+        .mean()
+        .sort_values("fecha_fin")
+    )
+
+    if nombres_metricas:
+        evolucion = evolucion.rename(
+            columns=nombres_metricas
+        )
+
+    evolucion = evolucion.set_index(
+        "fecha_fin"
+    )
+
+    evolucion.index.name = "Semana"
+
+    return evolucion
+
 
 def participantes_unicos(df):
     """
@@ -458,7 +541,49 @@ with tab_general:
             "Score Basic",
             f"{promedio_seguro(basic, 'score_basic'):.1f}",
         )
-
+        
+        # =================================================
+        # EVOLUCIÓN TEMPORAL BASIC
+        # =================================================
+        
+        st.divider()
+        st.subheader("Evolución temporal Basic")
+        
+        evolucion_basic = construir_evolucion_semanal(
+            basic_historico,
+            metricas=[
+                "autotrac",
+                "score_basic",
+            ],
+            nombres_metricas={
+                "autotrac": "AutoTrac",
+                "score_basic": "Score Basic",
+            },
+        )
+        
+        if evolucion_basic.empty:
+            st.info(
+                "No hay datos históricos disponibles para construir "
+                "la evolución temporal de la categoría Basic."
+            )
+        
+        else:
+            st.line_chart(
+                evolucion_basic,
+                use_container_width=True,
+            )
+        
+            if len(evolucion_basic) == 1:
+                st.caption(
+                    "Actualmente hay una sola semana disponible. "
+                    "La evolución se completará automáticamente "
+                    "cuando se incorporen nuevos períodos."
+                )
+        
+        # =================================================
+        # RANKING BASIC
+        # =================================================
+        
         st.divider()
         st.subheader("Ranking Basic")
         
@@ -606,7 +731,61 @@ with tab_general:
             "Ocio controlable",
             f"{promedio_seguro(elite, 'ocio_controlable'):.1f}%",
         )
-
+        
+        # =================================================
+        # EVOLUCIÓN TEMPORAL ELITE
+        # =================================================
+        
+        st.divider()
+        st.subheader("Evolución temporal Elite")
+        
+        evolucion_elite = construir_evolucion_semanal(
+            elite_historico,
+            metricas=[
+                "score_elite",
+                "autotrac",
+                "turn_automation",
+                "autopath",
+                "implement_guidance",
+                "efficiency_manager",
+                "field_cruise",
+                "ocio_controlable",
+            ],
+            nombres_metricas={
+                "score_elite": "Score Elite",
+                "autotrac": "AutoTrac",
+                "turn_automation": "Turn Automation",
+                "autopath": "AutoPath",
+                "implement_guidance": "Implement Guidance",
+                "efficiency_manager": "Efficiency Manager",
+                "field_cruise": "Field Cruise",
+                "ocio_controlable": "Ocio controlable",
+            },
+        )
+        
+        if evolucion_elite.empty:
+            st.info(
+                "No hay datos históricos disponibles para construir "
+                "la evolución temporal de la categoría Elite."
+            )
+        
+        else:
+            st.line_chart(
+                evolucion_elite,
+                use_container_width=True,
+            )
+        
+            if len(evolucion_elite) == 1:
+                st.caption(
+                    "Actualmente hay una sola semana disponible. "
+                    "La evolución se completará automáticamente "
+                    "cuando se incorporen nuevos períodos."
+                )
+        
+        # =================================================
+        # RANKING ELITE
+        # =================================================
+        
         st.divider()
         st.subheader("Ranking Elite")
         
