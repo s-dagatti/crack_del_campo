@@ -23,9 +23,36 @@ st.caption("Seguimiento de participantes - Tractores")
 # FUNCIONES
 # =====================================================
 
+# La versión obliga a Streamlit a recalcular los datos cuando
+# cambia la lógica de scores o intervención.
+CACHE_VERSION = "scores_intervencion_v2"
+
+
 @st.cache_data(ttl=3600)
-def load_data():
+def load_data(cache_version):
     datos = cargar_datos()
+
+    # La categoría debe normalizarse antes de calcular
+    # la necesidad de intervención.
+    datos["categoria"] = (
+        datos["categoria"]
+        .fillna("SIN CATEGORÍA")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .replace(
+            {
+                "BASE": "BASIC",
+                "BÁSICO": "BASIC",
+                "BASICO": "BASIC",
+                "GUIADO BÁSICO": "BASIC",
+                "GUIADO BASICO": "BASIC",
+                "AVANZADO": "ELITE",
+                "GUIADO AVANZADO": "ELITE",
+            }
+        )
+    )
+
     datos = calcular_scores(datos)
 
     return datos
@@ -105,7 +132,7 @@ def mostrar_tabla_vacia(mensaje):
 # =====================================================
 
 try:
-    df = load_data()
+    df = load_data(CACHE_VERSION)
 
 except Exception as error:
     st.error(
@@ -127,6 +154,7 @@ columnas_obligatorias = [
     "autotrac",
     "score_basic",
     "score_elite",
+    "necesidad_intervencion",
 ]
 
 columnas_faltantes = [
@@ -422,46 +450,79 @@ with tab_general:
                 ),
             )
 
-            tabla_basic = ranking_basic[
-                [
-                    "posición",
-                    "operario",
-                    "cliente",
-                    "sucursal",
-                    "numero_serie",
-                    "autotrac",
-                    "score_basic",
-                    "necesidad_intervencion",
-                ]
-            ].copy()
-
-            tabla_basic = tabla_basic.rename(
-                columns={
-                    "posición": "Posición",
-                    "operario": "Operario",
-                    "cliente": "Cliente",
-                    "sucursal": "Sucursal",
-                    "numero_serie": "N.º de serie",
-                    "autotrac": "AutoTrac (%)",
-                    "score_basic": "Score Basic",
-                    "necesidad_intervencion": "Intervención",
-                }
-            )
-
-            st.dataframe(
-                tabla_basic,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "AutoTrac (%)": st.column_config.NumberColumn(
-                        format="%.1f%%"
-                    ),
-                    "Score Basic": st.column_config.NumberColumn(
-                        format="%.1f"
-                    ),
-                },
-            )
-
+            columnas_ranking_basic = [
+                "posición",
+                "operario",
+                "cliente",
+                "sucursal",
+                "numero_serie",
+                "autotrac",
+                "score_basic",
+                "necesidad_intervencion",
+            ]
+            
+            faltantes_ranking_basic = [
+                columna
+                for columna in columnas_ranking_basic
+                if columna not in ranking_basic.columns
+            ]
+            
+            if faltantes_ranking_basic:
+                st.error(
+                    "No se puede construir el ranking Basic. "
+                    "Faltan las columnas: "
+                    + ", ".join(faltantes_ranking_basic)
+                )
+            
+                with st.expander(
+                    "Columnas disponibles en el ranking Basic"
+                ):
+                    st.write(
+                        ranking_basic.columns.tolist()
+                    )
+            
+            else:
+                tabla_basic = ranking_basic[
+                    columnas_ranking_basic
+                ].copy()
+            
+                tabla_basic = tabla_basic.rename(
+                    columns={
+                        "posición": "Posición",
+                        "operario": "Operario",
+                        "cliente": "Cliente",
+                        "sucursal": "Sucursal",
+                        "numero_serie": "N.º de serie",
+                        "autotrac": "AutoTrac (%)",
+                        "score_basic": "Score Basic",
+                        "necesidad_intervencion": (
+                            "Intervención"
+                        ),
+                    }
+                )
+            
+                st.dataframe(
+                    tabla_basic,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "AutoTrac (%)": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Score Basic": (
+                            st.column_config.NumberColumn(
+                                format="%.1f"
+                            )
+                        ),
+                        "Intervención": (
+                            st.column_config.TextColumn(
+                                width="medium"
+                            )
+                        ),
+                    },
+                )
     # =================================================
     # ELITE
     # =================================================
