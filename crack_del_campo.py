@@ -216,6 +216,22 @@ clientes_seleccionados = st.sidebar.multiselect(
     default=[],
 )
 
+# =====================================================
+# FILTRO DE NECESIDAD DE INTERVENCIÓN
+# =====================================================
+
+opciones_intervencion = [
+    "Todas",
+    "INTERVENCIÓN NECESARIA",
+    "INTERVENCIÓN MODERADA",
+    "NO REQUIERE INTERVENCIÓN",
+]
+
+intervencion_seleccionada = st.sidebar.selectbox(
+    "Necesidad de intervención",
+    options=opciones_intervencion,
+    index=0,
+)
 
 # =====================================================
 # FILTRO DE FECHAS
@@ -280,6 +296,12 @@ if clientes_seleccionados:
         df_filtrado["cliente"].isin(
             clientes_seleccionados
         )
+    ]
+
+if intervencion_seleccionada!= "Todas":
+    df_filtrado = df_filtrado[
+        df_filtrado["necesidad_intervencion"]
+        == intervencion_seleccionada
     ]
 
 if (
@@ -409,6 +431,7 @@ with tab_general:
                     "numero_serie",
                     "autotrac",
                     "score_basic",
+                    "necesidad_intervencion",
                 ]
             ].copy()
 
@@ -421,6 +444,7 @@ with tab_general:
                     "numero_serie": "N.º de serie",
                     "autotrac": "AutoTrac (%)",
                     "score_basic": "Score Basic",
+                    "necesidad_intervencion": "Intervención",
                 }
             )
 
@@ -522,6 +546,7 @@ with tab_general:
                     "field_cruise",
                     "ocio_controlable",
                     "score_elite",
+                    "necesidad_intervencion",
                 ]
             ].copy()
 
@@ -540,6 +565,7 @@ with tab_general:
                     "field_cruise": "Field Cruise (%)",
                     "ocio_controlable": "Ocio controlable (%)",
                     "score_elite": "Score Elite",
+                    "necesidad_intervencion": "Intervención",
                 }
             )
 
@@ -582,6 +608,7 @@ with tab_clientes:
             "organizacion",
             "org_id",
             "categoria",
+            "necesidad_intervencion",
         ]
         if columna in df_filtrado.columns
     ]
