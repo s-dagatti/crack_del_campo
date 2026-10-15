@@ -459,112 +459,112 @@ with tab_general:
             f"{promedio_seguro(basic, 'score_basic'):.1f}",
         )
 
-    st.divider()
-    st.subheader("Ranking Basic")
-    
-    if basic.empty:
-        mostrar_tabla_vacia(
-            "No hay participantes Basic para los filtros seleccionados."
-        )
-    
-    else:
-        ranking_basic = (
-            basic
-            .sort_values(
-                "score_basic",
-                ascending=False,
+        st.divider()
+        st.subheader("Ranking Basic")
+        
+        if basic.empty:
+            mostrar_tabla_vacia(
+                "No hay participantes Basic para los filtros seleccionados."
             )
-            .reset_index(drop=True)
-        )
-    
-        ranking_basic.insert(
-            0,
-            "posición",
-            range(
-                1,
-                len(ranking_basic) + 1,
-            ),
-        )
-    
-        columnas_ranking_basic = [
-            "posición",
-            "operario",
-            "cliente",
-            "sucursal",
-            "numero_serie",
-            "autotrac",
-            "score_basic",
-            "necesidad_intervencion",
-        ]
-    
-        faltantes_ranking_basic = [
-            columna
-            for columna in columnas_ranking_basic
-            if columna not in ranking_basic.columns
-        ]
-    
-        if faltantes_ranking_basic:
-            st.error(
-                "No se puede construir el ranking Basic. "
-                "Faltan las columnas: "
-                + ", ".join(faltantes_ranking_basic)
-            )
-    
-            with st.expander(
-                "Columnas disponibles en el ranking Basic"
-            ):
-                st.write(
-                    ranking_basic.columns.tolist()
-                )
-    
+        
         else:
-            tabla_basic = ranking_basic[
-                columnas_ranking_basic
-            ].copy()
-    
-            tabla_basic = tabla_basic.rename(
-                columns={
-                    "posición": "Posición",
-                    "operario": "Operario",
-                    "cliente": "Cliente",
-                    "sucursal": "Sucursal",
-                    "numero_serie": "N.º de serie",
-                    "autotrac": "AutoTrac (%)",
-                    "score_basic": "Score Basic",
-                    "necesidad_intervencion": (
-                        "Intervención"
-                    ),
-                }
+            ranking_basic = (
+                basic
+                .sort_values(
+                    "score_basic",
+                    ascending=False,
+                )
+                .reset_index(drop=True)
             )
-    
-            st.dataframe(
-                tabla_basic,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Posición": (
-                        st.column_config.NumberColumn(
-                            format="%d",
-                            width="small",
-                        )
-                    ),
-                    "AutoTrac (%)": (
-                        st.column_config.NumberColumn(
-                            format="%.1f%%"
-                        )
-                    ),
-                    "Score Basic": (
-                        st.column_config.NumberColumn(
-                            format="%.1f"
-                        )
-                    ),
-                    "Intervención": (
-                        st.column_config.TextColumn(
-                            width="medium"
-                        )
-                    ),
-                },
+        
+            ranking_basic.insert(
+                0,
+                "posición",
+                range(
+                    1,
+                    len(ranking_basic) + 1,
+                ),
             )
+        
+            columnas_ranking_basic = [
+                "posición",
+                "operario",
+                "cliente",
+                "sucursal",
+                "numero_serie",
+                "autotrac",
+                "score_basic",
+                "necesidad_intervencion",
+            ]
+        
+            faltantes_ranking_basic = [
+                columna
+                for columna in columnas_ranking_basic
+                if columna not in ranking_basic.columns
+            ]
+        
+            if faltantes_ranking_basic:
+                st.error(
+                    "No se puede construir el ranking Basic. "
+                    "Faltan las columnas: "
+                    + ", ".join(faltantes_ranking_basic)
+                )
+        
+                with st.expander(
+                    "Columnas disponibles en el ranking Basic"
+                ):
+                    st.write(
+                        ranking_basic.columns.tolist()
+                    )
+        
+            else:
+                tabla_basic = ranking_basic[
+                    columnas_ranking_basic
+                ].copy()
+        
+                tabla_basic = tabla_basic.rename(
+                    columns={
+                        "posición": "Posición",
+                        "operario": "Operario",
+                        "cliente": "Cliente",
+                        "sucursal": "Sucursal",
+                        "numero_serie": "N.º de serie",
+                        "autotrac": "AutoTrac (%)",
+                        "score_basic": "Score Basic",
+                        "necesidad_intervencion": (
+                            "Intervención"
+                        ),
+                    }
+                )
+        
+                st.dataframe(
+                    tabla_basic,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Posición": (
+                            st.column_config.NumberColumn(
+                                format="%d",
+                                width="small",
+                            )
+                        ),
+                        "AutoTrac (%)": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
+                        ),
+                        "Score Basic": (
+                            st.column_config.NumberColumn(
+                                format="%.1f"
+                            )
+                        ),
+                        "Intervención": (
+                            st.column_config.TextColumn(
+                                width="medium"
+                            )
+                        ),
+                    },
+                )
     # =================================================
     # ELITE
     # =================================================
