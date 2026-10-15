@@ -26,8 +26,8 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Crack del Campo FY27")
-st.caption("Seguimiento de participantes - Tractores")
+st.title("Crack del Campo | Tractores")
+st.caption("Seguimiento de participantes")
 
 
 # =====================================================
