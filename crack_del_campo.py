@@ -1187,16 +1187,16 @@ with tab_general:
         # =================================================
         # RANKING BASIC
         # =================================================
-
+        
         st.divider()
         st.subheader("Ranking Basic")
-
+        
         if basic.empty:
             mostrar_tabla_vacia(
                 "No hay participantes Basic para "
                 "los filtros seleccionados."
             )
-
+        
         else:
             ranking_basic = (
                 basic
@@ -1206,7 +1206,7 @@ with tab_general:
                 )
                 .reset_index(drop=True)
             )
-
+        
             ranking_basic.insert(
                 0,
                 "posición",
@@ -1215,9 +1215,11 @@ with tab_general:
                     len(ranking_basic) + 1,
                 ),
             )
-
+        
             columnas_ranking_basic = [
                 "posición",
+                "organizacion",
+                "org_id",
                 "operario",
                 "cliente",
                 "sucursal",
@@ -1228,37 +1230,39 @@ with tab_general:
                 "score_basic",
                 "necesidad_intervencion",
             ]
-
+        
             faltantes_ranking_basic = [
                 columna
                 for columna in columnas_ranking_basic
                 if columna not in ranking_basic.columns
             ]
-
+        
             if faltantes_ranking_basic:
                 st.error(
-                    "No se puede construir el ranking "
-                    "Basic. Faltan las columnas: "
+                    "No se puede construir el ranking Basic. "
+                    "Faltan las columnas: "
                     + ", ".join(
                         faltantes_ranking_basic
                     )
                 )
-
+        
                 with st.expander(
                     "Columnas disponibles en el ranking Basic"
                 ):
                     st.write(
                         ranking_basic.columns.tolist()
                     )
-
+        
             else:
                 tabla_basic = ranking_basic[
                     columnas_ranking_basic
                 ].copy()
-
+        
                 tabla_basic = tabla_basic.rename(
                     columns={
                         "posición": "Posición",
+                        "organizacion": "Organización",
+                        "org_id": "Organization ID",
                         "operario": "Operario",
                         "cliente": "Cliente",
                         "sucursal": "Sucursal",
@@ -1272,7 +1276,7 @@ with tab_general:
                         ),
                     }
                 )
-
+        
                 st.dataframe(
                     tabla_basic,
                     use_container_width=True,
@@ -1284,29 +1288,59 @@ with tab_general:
                                 width="small",
                             )
                         ),
+                        "Organización": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Organization ID": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Operario": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Cliente": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Sucursal": (
+                            st.column_config.TextColumn(
+                                width="small",
+                            )
+                        ),
+                        "N.º de serie": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
                         "Desde": (
                             st.column_config.DateColumn(
-                                format="DD/MM/YYYY"
+                                format="DD/MM/YYYY",
                             )
                         ),
                         "Hasta": (
                             st.column_config.DateColumn(
-                                format="DD/MM/YYYY"
+                                format="DD/MM/YYYY",
                             )
                         ),
                         "AutoTrac (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "Score Basic": (
                             st.column_config.NumberColumn(
-                                format="%.1f"
+                                format="%.1f",
                             )
                         ),
                         "Intervención": (
                             st.column_config.TextColumn(
-                                width="medium"
+                                width="medium",
                             )
                         ),
                     },
@@ -1484,16 +1518,16 @@ with tab_general:
         # =================================================
         # RANKING ELITE
         # =================================================
-
+        
         st.divider()
         st.subheader("Ranking Elite")
-
+        
         if elite.empty:
             mostrar_tabla_vacia(
                 "No hay participantes Elite para "
                 "los filtros seleccionados."
             )
-
+        
         else:
             ranking_elite = (
                 elite
@@ -1503,7 +1537,7 @@ with tab_general:
                 )
                 .reset_index(drop=True)
             )
-
+        
             ranking_elite.insert(
                 0,
                 "posición",
@@ -1512,9 +1546,11 @@ with tab_general:
                     len(ranking_elite) + 1,
                 ),
             )
-
+        
             columnas_ranking_elite = [
                 "posición",
+                "organizacion",
+                "org_id",
                 "operario",
                 "cliente",
                 "sucursal",
@@ -1531,37 +1567,39 @@ with tab_general:
                 "score_elite",
                 "necesidad_intervencion",
             ]
-
+        
             faltantes_ranking_elite = [
                 columna
                 for columna in columnas_ranking_elite
                 if columna not in ranking_elite.columns
             ]
-
+        
             if faltantes_ranking_elite:
                 st.error(
-                    "No se puede construir el ranking "
-                    "Elite. Faltan las columnas: "
+                    "No se puede construir el ranking Elite. "
+                    "Faltan las columnas: "
                     + ", ".join(
                         faltantes_ranking_elite
                     )
                 )
-
+        
                 with st.expander(
                     "Columnas disponibles en el ranking Elite"
                 ):
                     st.write(
                         ranking_elite.columns.tolist()
                     )
-
+        
             else:
                 tabla_elite = ranking_elite[
                     columnas_ranking_elite
                 ].copy()
-
+        
                 tabla_elite = tabla_elite.rename(
                     columns={
                         "posición": "Posición",
+                        "organizacion": "Organización",
+                        "org_id": "Organization ID",
                         "operario": "Operario",
                         "cliente": "Cliente",
                         "sucursal": "Sucursal",
@@ -1572,9 +1610,7 @@ with tab_general:
                         "turn_automation": (
                             "Turn Automation (%)"
                         ),
-                        "autopath": (
-                            "AutoPath (%)"
-                        ),
+                        "autopath": "AutoPath (%)",
                         "implement_guidance": (
                             "Implement Guidance (%)"
                         ),
@@ -1593,7 +1629,7 @@ with tab_general:
                         ),
                     }
                 )
-
+        
                 st.dataframe(
                     tabla_elite,
                     use_container_width=True,
@@ -1605,59 +1641,89 @@ with tab_general:
                                 width="small",
                             )
                         ),
+                        "Organización": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Organization ID": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Operario": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Cliente": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
+                        "Sucursal": (
+                            st.column_config.TextColumn(
+                                width="small",
+                            )
+                        ),
+                        "N.º de serie": (
+                            st.column_config.TextColumn(
+                                width="medium",
+                            )
+                        ),
                         "Desde": (
                             st.column_config.DateColumn(
-                                format="DD/MM/YYYY"
+                                format="DD/MM/YYYY",
                             )
                         ),
                         "Hasta": (
                             st.column_config.DateColumn(
-                                format="DD/MM/YYYY"
+                                format="DD/MM/YYYY",
                             )
                         ),
                         "AutoTrac (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "Turn Automation (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "AutoPath (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "Implement Guidance (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "Efficiency Manager (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "Field Cruise (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "Ocio controlable (%)": (
                             st.column_config.NumberColumn(
-                                format="%.1f%%"
+                                format="%.1f%%",
                             )
                         ),
                         "Score Elite": (
                             st.column_config.NumberColumn(
-                                format="%.1f"
+                                format="%.1f",
                             )
                         ),
                         "Intervención": (
                             st.column_config.TextColumn(
-                                width="medium"
+                                width="medium",
                             )
                         ),
                     },
