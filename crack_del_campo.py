@@ -26,7 +26,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("🚜 Crack del Campo FY27")
+st.title("Crack del Campo FY27")
 st.caption("Seguimiento de participantes - Tractores")
 
 
@@ -1065,9 +1065,9 @@ st.sidebar.caption(
 
 tab_general, tab_informe, tab_clientes = st.tabs(
     [
-        "📊 Tablero General",
-        "📄 Generación Informe",
-        "👥 Datos Clientes",
+        "Tablero General",
+        "Generación Informe",
+        "Datos Clientes",
     ]
 )
 
@@ -1079,8 +1079,8 @@ tab_general, tab_informe, tab_clientes = st.tabs(
 with tab_general:
     basic_tab, elite_tab = st.tabs(
         [
-            "🚜 Basic",
-            "🏆 Elite",
+            "Basic",
+            "Elite",
         ]
     )
 
