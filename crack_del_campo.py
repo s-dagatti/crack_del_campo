@@ -1,3 +1,4 @@
+
 import io
 import textwrap
 import matplotlib.pyplot as plt
@@ -92,12 +93,9 @@ def promedio_seguro(df, columna):
     if pd.isna(resultado):
         return 0.0
     return float(resultado)
-
-
 def porcentaje_tecnologia(df, columna):
     """
     Calcula el promedio de uso de una tecnología.
-
     Reglas:
     - Los valores nulos representan semanas sin actividad
       y no participan del promedio.
@@ -107,20 +105,15 @@ def porcentaje_tecnologia(df, columna):
     """
     if df.empty or columna not in df.columns:
         return None
-
     valores = pd.to_numeric(
         df[columna],
         errors="coerce",
     ).dropna()
-
     if valores.empty:
         return None
-
     return float(
         valores.clip(lower=0, upper=100).mean()
     )
-
-
 def formatear_porcentaje_tecnologia(valor):
     """
     Presenta un indicador tecnológico sin confundir una
@@ -128,23 +121,16 @@ def formatear_porcentaje_tecnologia(valor):
     """
     if valor is None or pd.isna(valor):
         return "Sin actividad"
-
     return f"{valor:.1f}%"
-
-
 def formatear_score_tecnologia(df, columna):
     """
     Formatea un score calculado con componentes tecnológicos.
     Evita mostrar 0 cuando todo el período está sin actividad.
     """
     valor = porcentaje_tecnologia(df, columna)
-
     if valor is None:
         return "Sin actividad"
-
     return f"{valor:.1f}"
-
-
 METRICAS_TECNOLOGIA_ELITE = [
     "autotrac",
     "turn_automation",
@@ -153,12 +139,9 @@ METRICAS_TECNOLOGIA_ELITE = [
     "efficiency_manager",
     "field_cruise",
 ]
-
-
 def ajustar_scores_tecnologia(df):
     """
     Ajusta los scores sin convertir tecnologías nulas en cero.
-
     Reglas:
     - BASIC: score_basic es exactamente igual a AutoTrac.
     - ELITE: score_elite es el promedio de los componentes
@@ -170,12 +153,9 @@ def ajustar_scores_tecnologia(df):
     """
     if df.empty:
         return df.copy()
-
     resultado = df.copy()
-
     if "categoria" not in resultado.columns:
         return resultado
-
     categorias = (
         resultado["categoria"]
         .fillna("")
@@ -183,97 +163,75 @@ def ajustar_scores_tecnologia(df):
         .str.strip()
         .str.upper()
     )
-
     mascara_basic = categorias.eq("BASIC")
     mascara_elite = categorias.eq("ELITE")
-
     # BASIC: el score debe coincidir exactamente con AutoTrac.
     if "autotrac" in resultado.columns:
         autotrac = pd.to_numeric(
             resultado["autotrac"],
             errors="coerce",
         ).clip(lower=0, upper=100)
-
         resultado.loc[
             mascara_basic,
             "score_basic",
         ] = autotrac.loc[mascara_basic]
-
-    # ELITE: una tecnología nula significa que la máquina
-    # no utilizó esa tecnología y aporta 0 al score.
+    # ELITE: cada componente nulo se excluye del denominador.
+    # Un cero realmente informado sí participa del promedio.
     componentes_elite = pd.DataFrame(
         index=resultado.index,
     )
-    
     for columna in METRICAS_TECNOLOGIA_ELITE:
         if columna in resultado.columns:
-            componentes_elite[columna] = (
-                pd.to_numeric(
-                    resultado[columna],
-                    errors="coerce",
-                )
-                .fillna(0.0)
-                .clip(lower=0, upper=100)
-            )
-    else:
-        # Si la métrica no existe en el dataframe,
-        # también debe aportar 0 al score Elite.
-        componentes_elite[columna] = 0.0
-
+            componentes_elite[columna] = pd.to_numeric(
+                resultado[columna],
+                errors="coerce",
+            ).clip(lower=0, upper=100)
     if "ocio_controlable" in resultado.columns:
         ocio_controlable = pd.to_numeric(
             resultado["ocio_controlable"],
             errors="coerce",
         ).clip(lower=0, upper=100)
-
         componentes_elite["control_ocio"] = (
             100 - ocio_controlable
         )
-
     if not componentes_elite.empty:
-        score_elite = componentes_elite.mean(axis=1)
-    
+        score_elite = componentes_elite.mean(
+            axis=1,
+            skipna=True,
+        )
+        # Si todos los componentes de una fila son nulos,
+        # el resultado permanece nulo y no se muestra como 0.
         resultado.loc[
             mascara_elite,
             "score_elite",
         ] = score_elite.loc[mascara_elite]
-
     return resultado
-
-
 def calcular_scores_ajustados(df):
     """
     Ejecuta la lógica general de scores y luego aplica las reglas
     tecnológicas del tablero sin perder los valores nulos originales.
-
     Se restauran las métricas desde el dataframe de entrada por si
     calcular_scores convierte internamente algún nulo en cero.
     """
     if df.empty:
         return df.copy()
-
     datos_originales = df.copy()
     resultado = calcular_scores(
         df.copy()
     )
-
     columnas_a_preservar = (
         METRICAS_TECNOLOGIA_ELITE
         + ["ocio_controlable"]
     )
-
     for columna in columnas_a_preservar:
         if columna in datos_originales.columns:
             resultado[columna] = pd.to_numeric(
                 datos_originales[columna],
                 errors="coerce",
             ).clip(lower=0, upper=100)
-
     return ajustar_scores_tecnologia(
         resultado
     )
-
-
 def valor_informado(serie):
     """
     Devuelve una máscara booleana que identifica valores
@@ -684,8 +642,6 @@ def valor_numerico(registro, columna, predeterminado=0.0):
     if pd.isna(valor):
         return float(predeterminado)
     return float(valor)
-
-
 def valor_tecnologia_registro(registro, columna):
     """
     Lee una tecnología sin convertir la falta de actividad
@@ -693,15 +649,12 @@ def valor_tecnologia_registro(registro, columna):
     """
     if columna not in registro.index:
         return None
-
     valor = pd.to_numeric(
         pd.Series([registro[columna]]),
         errors="coerce",
     ).iloc[0]
-
     if pd.isna(valor):
         return None
-
     return float(min(max(valor, 0), 100))
 def calcular_posiciones_informe(
     poblacion,
@@ -721,7 +674,20 @@ def calcular_posiciones_informe(
     ranking_general[columna_score] = pd.to_numeric(
         ranking_general[columna_score],
         errors="coerce",
-    ).fillna(0.0)
+    )
+    # Una máquina sin score válido no tuvo componentes suficientes
+    # para ser evaluada y se excluye del ranking, en lugar de
+    # asignarle artificialmente un score de cero.
+    ranking_general = ranking_general[
+        ranking_general[columna_score].notna()
+    ].copy()
+    if ranking_general.empty:
+        return {
+            "general": None,
+            "total_general": 0,
+            "sucursal": None,
+            "total_sucursal": 0,
+        }
     ranking_general["posicion_informe"] = (
         ranking_general[columna_score]
         .rank(method="min", ascending=False)
@@ -805,7 +771,6 @@ def recomendaciones_basic(registro, evolucion):
             evolucion["AutoTrac"],
             errors="coerce",
         ).dropna()
-
     if len(valores_autotrac) >= 2:
         valor_actual = float(valores_autotrac.iloc[-1])
         valor_anterior = float(valores_autotrac.iloc[-2])
@@ -835,10 +800,8 @@ def recomendaciones_basic(registro, evolucion):
             "Continuar incorporando semanas para medir la tendencia "
             "y fijar un objetivo de mejora de AutoTrac."
         )
-
     if autotrac is None:
         return recomendaciones
-
     if autotrac < 100:
         recomendaciones.append(
             "Identificar las labores aptas en las que todavía no se usa "
@@ -969,7 +932,7 @@ def crear_figura_evolucion(evolucion, categoria):
 def agregar_texto_pdf(figura, x, y, texto, ancho=92, **kwargs):
     """Agrega texto envuelto a una figura y devuelve la próxima altura."""
     lineas = textwrap.wrap(str(texto), width=ancho) or [""]
-    figura.text(x, y, "\\n".join(lineas), **kwargs)
+    figura.text(x, y, "\\\\n".join(lineas), **kwargs)
     return y - (0.027 * len(lineas))
 def generar_pdf_informe(
     registro,
