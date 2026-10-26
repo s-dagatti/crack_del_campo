@@ -1730,7 +1730,6 @@ with tab_general:
                 "fecha_inicio",
                 "fecha_fin",
                 "autotrac",
-                "score_basic",
                 "necesidad_intervencion",
             ]
             faltantes_ranking_basic = [
@@ -1768,7 +1767,6 @@ with tab_general:
                         "fecha_inicio": "Desde",
                         "fecha_fin": "Hasta",
                         "autotrac": "AutoTrac (%)",
-                        "score_basic": "Score Basic",
                         "necesidad_intervencion": (
                             "Intervención"
                         ),
@@ -1828,11 +1826,6 @@ with tab_general:
                         "AutoTrac (%)": (
                             st.column_config.NumberColumn(
                                 format="%.1f%%",
-                            )
-                        ),
-                        "Score Basic": (
-                            st.column_config.NumberColumn(
-                                format="%.1f",
                             )
                         ),
                         "Intervención": (
