@@ -31,7 +31,7 @@ st.caption("Seguimiento de participantes")
 # =====================================================
 # Cambiar esta versión obliga a Streamlit a reconstruir
 # el dataframe cuando se modifica la lógica del tablero.
-CACHE_VERSION = "ranking_periodo_v6_tecnologia_sin_actividad"
+CACHE_VERSION = "ranking_periodo_v6_umbral_tecnologia"
 @st.cache_data(ttl=3600)
 def load_data(cache_version):
     """
@@ -99,21 +99,26 @@ def porcentaje_tecnologia(df, columna):
     Reglas:
     - Los valores nulos representan semanas sin actividad
       y no participan del promedio.
-    - Un cero informado representa actividad sin uso de
-      la tecnología y sí participa del promedio.
-    - Devuelve None cuando no existe ningún dato válido.
+    - Los valores desde 0 % hasta menos de 1 % tampoco
+      participan del promedio tecnológico.
+    - Los valores desde 1 % sí participan con su valor.
+    - Esta exclusión solo afecta al indicador tecnológico:
+      el score conserva todos los registros.
+    - Devuelve None cuando no existe ningún valor de al
+      menos 1 %.
     """
     if df.empty or columna not in df.columns:
         return None
     valores = pd.to_numeric(
         df[columna],
         errors="coerce",
+    ).clip(lower=0, upper=100)
+    valores = valores.where(
+        valores >= 1.0
     ).dropna()
     if valores.empty:
         return None
-    return float(
-        valores.clip(lower=0, upper=100).mean()
-    )
+    return float(valores.mean())
 def formatear_porcentaje_tecnologia(valor):
     """
     Presenta un indicador tecnológico sin confundir una
@@ -125,11 +130,10 @@ def formatear_porcentaje_tecnologia(valor):
 def formatear_score_tecnologia(df, columna):
     """
     Formatea un score calculado con componentes tecnológicos.
-    Evita mostrar 0 cuando todo el período está sin actividad.
+    El score no aplica el umbral mínimo de uso tecnológico:
+    los valores nulos y los valores menores a 1 % participan.
     """
-    valor = porcentaje_tecnologia(df, columna)
-    if valor is None:
-        return "Sin actividad"
+    valor = promedio_seguro(df, columna)
     return f"{valor:.1f}"
 METRICAS_TECNOLOGIA_ELITE = [
     "autotrac",
@@ -139,17 +143,23 @@ METRICAS_TECNOLOGIA_ELITE = [
     "efficiency_manager",
     "field_cruise",
 ]
+METRICAS_TECNOLOGIA = set(
+    METRICAS_TECNOLOGIA_ELITE
+)
+UMBRAL_PROMEDIO_TECNOLOGIA = 1.0
 def ajustar_scores_tecnologia(df):
     """
-    Ajusta los scores sin convertir tecnologías nulas en cero.
+    Ajusta los scores de acuerdo con el aporte semanal.
     Reglas:
-    - BASIC: score_basic es exactamente igual a AutoTrac.
+    - BASIC: score_basic es igual a AutoTrac; un nulo aporta 0.
     - ELITE: score_elite es el promedio de los componentes
-      tecnológicos realmente informados.
+      tecnológicos; un nulo aporta 0.
     - El control del ocio participa como 100 - ocio_controlable
       solamente cuando ocio_controlable está informado.
-    - Un cero real sí participa del score.
-    - Si no existe ningún componente válido, el score queda nulo.
+    - Los valores desde 0 % hasta menos de 1 % participan del
+      score con su valor real.
+    - El umbral de 1 % se aplica solo a los promedios de uso,
+      nunca al score.
     """
     if df.empty:
         return df.copy()
@@ -165,26 +175,32 @@ def ajustar_scores_tecnologia(df):
     )
     mascara_basic = categorias.eq("BASIC")
     mascara_elite = categorias.eq("ELITE")
-    # BASIC: el score debe coincidir exactamente con AutoTrac.
+    # BASIC: nulo aporta 0 y un valor menor a 1 conserva su valor.
     if "autotrac" in resultado.columns:
         autotrac = pd.to_numeric(
             resultado["autotrac"],
             errors="coerce",
-        ).clip(lower=0, upper=100)
+        ).fillna(0.0).clip(lower=0, upper=100)
         resultado.loc[
             mascara_basic,
             "score_basic",
         ] = autotrac.loc[mascara_basic]
-    # ELITE: cada componente nulo se excluye del denominador.
+    # ELITE: cada tecnología nula aporta 0 al score.
     componentes_elite = pd.DataFrame(
         index=resultado.index,
     )
     for columna in METRICAS_TECNOLOGIA_ELITE:
         if columna in resultado.columns:
-            componentes_elite[columna] = pd.to_numeric(
-                resultado[columna],
-                errors="coerce",
-            ).clip(lower=0, upper=100)
+            componentes_elite[columna] = (
+                pd.to_numeric(
+                    resultado[columna],
+                    errors="coerce",
+                )
+                .fillna(0.0)
+                .clip(lower=0, upper=100)
+            )
+        else:
+            componentes_elite[columna] = 0.0
     if "ocio_controlable" in resultado.columns:
         ocio_controlable = pd.to_numeric(
             resultado["ocio_controlable"],
@@ -198,8 +214,6 @@ def ajustar_scores_tecnologia(df):
             axis=1,
             skipna=True,
         )
-        # DataFrame.mean devuelve NaN cuando todos los componentes
-        # de una fila son nulos, que es el comportamiento buscado.
         resultado.loc[
             mascara_elite,
             "score_elite",
@@ -378,7 +392,9 @@ def construir_evolucion_semanal(
     Reglas:
     - Devuelve una fila por semana.
     - Utiliza fecha_fin como fecha representativa.
-    - Las métricas ausentes se excluyen del promedio.
+    - Las tecnologías nulas o menores a 1 % se excluyen
+      únicamente del promedio tecnológico.
+    - Los scores y los motivos ociosos no aplican umbral.
     - Calcula el promedio de las máquinas incluidas en
       la población seleccionada.
     """
@@ -404,17 +420,19 @@ def construir_evolucion_semanal(
     ]
     if not metricas_disponibles:
         return pd.DataFrame()
-    # Una tecnología sin dato indica que no hubo actividad
-    # durante esa semana. Se mantiene como NaN para que no
-    # participe del promedio.
     for metrica in metricas_disponibles:
-        resultado[metrica] = (
+        valores = (
             pd.to_numeric(
                 resultado[metrica],
                 errors="coerce",
             )
             .clip(lower=0, upper=100)
         )
+        if metrica in METRICAS_TECNOLOGIA:
+            valores = valores.where(
+                valores >= UMBRAL_PROMEDIO_TECNOLOGIA
+            )
+        resultado[metrica] = valores
     evolucion = (
         resultado
         .groupby(
@@ -442,8 +460,11 @@ def consolidar_periodo(df):
     Consolida todas las semanas seleccionadas en una fila
     por número de serie.
     Reglas:
-    - Las tecnologías se promedian durante el período.
-    - Un valor tecnológico ausente se excluye del promedio.
+    - Las tecnologías nulas o menores a 1 % se excluyen
+      del promedio tecnológico del período.
+    - Los scores semanales se promedian sin aplicar umbral:
+      nulos y valores menores a 1 % ya aportaron al score.
+    - Los motivos ociosos mantienen la lógica actual.
     - Las dimensiones descriptivas conservan el dato de
       la fila más reciente.
     - Los scores se recalculan con las métricas promedio.
@@ -452,7 +473,9 @@ def consolidar_periodo(df):
     """
     if df.empty:
         return df.copy()
-    resultado = df.copy()
+    resultado = calcular_scores_ajustados(
+        df.copy()
+    )
     # =================================================
     # FECHAS
     # =================================================
@@ -489,23 +512,27 @@ def consolidar_periodo(df):
         "ignorada",
         "ocio_controlable",
         "score_ociosidad",
+        "score_basic",
+        "score_elite",
     ]
     metricas_disponibles = [
         columna
         for columna in metricas_promedio
         if columna in resultado.columns
     ]
-    # Un valor ausente indica una semana sin actividad.
-    # Se mantiene como NaN para excluirlo del promedio
-    # del período.
     for columna in metricas_disponibles:
-        resultado[columna] = (
+        valores = (
             pd.to_numeric(
                 resultado[columna],
                 errors="coerce",
             )
             .clip(lower=0, upper=100)
         )
+        if columna in METRICAS_TECNOLOGIA:
+            valores = valores.where(
+                valores >= UMBRAL_PROMEDIO_TECNOLOGIA
+            )
+        resultado[columna] = valores
     # =================================================
     # DIMENSIONES DESCRIPTIVAS
     # =================================================
@@ -556,11 +583,53 @@ def consolidar_periodo(df):
         )
         .agg(agregaciones)
     )
-    # Recalcula los scores y la intervención utilizando
-    # los promedios del período.
-    consolidado = calcular_scores_ajustados(
-        consolidado
+    # La intervención se recalcula a partir del score promedio
+    # del período, sin modificar los promedios tecnológicos.
+    clasificacion = consolidado.copy()
+    categorias = (
+        clasificacion["categoria"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        if "categoria" in clasificacion.columns
+        else pd.Series("", index=clasificacion.index)
     )
+    mascara_basic = categorias.eq("BASIC")
+    mascara_elite = categorias.eq("ELITE")
+    if "score_basic" in clasificacion.columns:
+        if "autotrac" not in clasificacion.columns:
+            clasificacion["autotrac"] = pd.NA
+        clasificacion.loc[
+            mascara_basic,
+            "autotrac",
+        ] = clasificacion.loc[
+            mascara_basic,
+            "score_basic",
+        ]
+    if "score_elite" in clasificacion.columns:
+        for columna in METRICAS_TECNOLOGIA_ELITE:
+            if columna not in clasificacion.columns:
+                clasificacion[columna] = pd.NA
+            clasificacion.loc[
+                mascara_elite,
+                columna,
+            ] = clasificacion.loc[
+                mascara_elite,
+                "score_elite",
+            ]
+        if "ocio_controlable" in clasificacion.columns:
+            clasificacion.loc[
+                mascara_elite,
+                "ocio_controlable",
+            ] = pd.NA
+    clasificacion = calcular_scores_ajustados(
+        clasificacion
+    )
+    if "necesidad_intervencion" in clasificacion.columns:
+        consolidado["necesidad_intervencion"] = (
+            clasificacion["necesidad_intervencion"]
+        )
     return consolidado
 def filtrar_historico_por_poblacion(
     historico,
@@ -673,19 +742,7 @@ def calcular_posiciones_informe(
     ranking_general[columna_score] = pd.to_numeric(
         ranking_general[columna_score],
         errors="coerce",
-    )
-    # Una máquina sin actividad tecnológica válida no debe
-    # aparecer en el ranking como si tuviera un score de cero.
-    ranking_general = ranking_general[
-        ranking_general[columna_score].notna()
-    ].copy()
-    if ranking_general.empty:
-        return {
-            "general": None,
-            "total_general": 0,
-            "sucursal": None,
-            "total_sucursal": 0,
-        }
+    ).fillna(0.0)
     ranking_general["posicion_informe"] = (
         ranking_general[columna_score]
         .rank(method="min", ascending=False)
