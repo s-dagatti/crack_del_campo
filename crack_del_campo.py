@@ -241,7 +241,7 @@ def construir_evolucion_semanal(
     Reglas:
     - Devuelve una fila por semana.
     - Utiliza fecha_fin como fecha representativa.
-    - Las métricas ausentes aportan 0.
+    - Las métricas ausentes se excluyen del promedio.
     - Calcula el promedio de las máquinas incluidas en
       la población seleccionada.
     """
@@ -267,15 +267,15 @@ def construir_evolucion_semanal(
     ]
     if not metricas_disponibles:
         return pd.DataFrame()
-    # Una tecnología sin dato representa que no hubo
-    # actividad durante esa semana.
+    # Una tecnología sin dato indica que no hubo actividad
+    # durante esa semana. Se mantiene como NaN para que no
+    # participe del promedio.
     for metrica in metricas_disponibles:
         resultado[metrica] = (
             pd.to_numeric(
                 resultado[metrica],
                 errors="coerce",
             )
-            .fillna(0.0)
             .clip(lower=0, upper=100)
         )
     evolucion = (
@@ -306,7 +306,7 @@ def consolidar_periodo(df):
     por número de serie.
     Reglas:
     - Las tecnologías se promedian durante el período.
-    - Un valor tecnológico ausente aporta 0.
+    - Un valor tecnológico ausente se excluye del promedio.
     - Las dimensiones descriptivas conservan el dato de
       la fila más reciente.
     - Los scores se recalculan con las métricas promedio.
@@ -358,15 +358,15 @@ def consolidar_periodo(df):
         for columna in metricas_promedio
         if columna in resultado.columns
     ]
-    # Un valor ausente durante una semana aporta 0
-    # al promedio del período.
+    # Un valor ausente indica una semana sin actividad.
+    # Se mantiene como NaN para excluirlo del promedio
+    # del período.
     for columna in metricas_disponibles:
         resultado[columna] = (
             pd.to_numeric(
                 resultado[columna],
                 errors="coerce",
             )
-            .fillna(0.0)
             .clip(lower=0, upper=100)
         )
     # =================================================
