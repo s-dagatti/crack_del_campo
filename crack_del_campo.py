@@ -199,17 +199,26 @@ def ajustar_scores_tecnologia(df):
             "score_basic",
         ] = autotrac.loc[mascara_basic]
 
-    # ELITE: cada componente nulo se excluye del denominador.
+    # ELITE: una tecnología nula significa que la máquina
+    # no utilizó esa tecnología y aporta 0 al score.
     componentes_elite = pd.DataFrame(
         index=resultado.index,
     )
-
+    
     for columna in METRICAS_TECNOLOGIA_ELITE:
         if columna in resultado.columns:
-            componentes_elite[columna] = pd.to_numeric(
-                resultado[columna],
-                errors="coerce",
-            ).clip(lower=0, upper=100)
+            componentes_elite[columna] = (
+                pd.to_numeric(
+                    resultado[columna],
+                    errors="coerce",
+                )
+                .fillna(0.0)
+                .clip(lower=0, upper=100)
+            )
+    else:
+        # Si la métrica no existe en el dataframe,
+        # también debe aportar 0 al score Elite.
+        componentes_elite[columna] = 0.0
 
     if "ocio_controlable" in resultado.columns:
         ocio_controlable = pd.to_numeric(
@@ -222,13 +231,8 @@ def ajustar_scores_tecnologia(df):
         )
 
     if not componentes_elite.empty:
-        score_elite = componentes_elite.mean(
-            axis=1,
-            skipna=True,
-        )
-
-        # DataFrame.mean devuelve NaN cuando todos los componentes
-        # de una fila son nulos, que es el comportamiento buscado.
+        score_elite = componentes_elite.mean(axis=1)
+    
         resultado.loc[
             mascara_elite,
             "score_elite",
