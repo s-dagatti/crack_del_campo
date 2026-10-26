@@ -31,7 +31,7 @@ st.caption("Seguimiento de participantes")
 # =====================================================
 # Cambiar esta versión obliga a Streamlit a reconstruir
 # el dataframe cuando se modifica la lógica del tablero.
-CACHE_VERSION = "ranking_periodo_v5_scores_sin_nulos"
+CACHE_VERSION = "ranking_periodo_v6_tecnologia_sin_actividad"
 @st.cache_data(ttl=3600)
 def load_data(cache_version):
     """
@@ -176,7 +176,6 @@ def ajustar_scores_tecnologia(df):
             "score_basic",
         ] = autotrac.loc[mascara_basic]
     # ELITE: cada componente nulo se excluye del denominador.
-    # Un cero realmente informado sí participa del promedio.
     componentes_elite = pd.DataFrame(
         index=resultado.index,
     )
@@ -199,8 +198,8 @@ def ajustar_scores_tecnologia(df):
             axis=1,
             skipna=True,
         )
-        # Si todos los componentes de una fila son nulos,
-        # el resultado permanece nulo y no se muestra como 0.
+        # DataFrame.mean devuelve NaN cuando todos los componentes
+        # de una fila son nulos, que es el comportamiento buscado.
         resultado.loc[
             mascara_elite,
             "score_elite",
@@ -675,9 +674,8 @@ def calcular_posiciones_informe(
         ranking_general[columna_score],
         errors="coerce",
     )
-    # Una máquina sin score válido no tuvo componentes suficientes
-    # para ser evaluada y se excluye del ranking, en lugar de
-    # asignarle artificialmente un score de cero.
+    # Una máquina sin actividad tecnológica válida no debe
+    # aparecer en el ranking como si tuviera un score de cero.
     ranking_general = ranking_general[
         ranking_general[columna_score].notna()
     ].copy()
@@ -932,7 +930,7 @@ def crear_figura_evolucion(evolucion, categoria):
 def agregar_texto_pdf(figura, x, y, texto, ancho=92, **kwargs):
     """Agrega texto envuelto a una figura y devuelve la próxima altura."""
     lineas = textwrap.wrap(str(texto), width=ancho) or [""]
-    figura.text(x, y, "\\\\n".join(lineas), **kwargs)
+    figura.text(x, y, "\\n".join(lineas), **kwargs)
     return y - (0.027 * len(lineas))
 def generar_pdf_informe(
     registro,
