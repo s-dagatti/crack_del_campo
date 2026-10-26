@@ -1628,9 +1628,11 @@ with tab_general:
         )
         c4.metric(
             "Score Basic",
-            formatear_score_tecnologia(
-                basic,
-                "score_basic",
+            formatear_porcentaje_tecnologia(
+                porcentaje_tecnologia(
+                    basic,
+                    "autotrac",
+                )
             ),
         )
         # =================================================
@@ -1642,13 +1644,9 @@ with tab_general:
         )
         evolucion_basic = construir_evolucion_semanal(
             basic_historico,
-            metricas=[
-                "autotrac",
-                "score_basic",
-            ],
+            metricas=["autotrac"],
             nombres_metricas={
                 "autotrac": "AutoTrac",
-                "score_basic": "Score Basic",
             },
         )
         if evolucion_basic.empty:
