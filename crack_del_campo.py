@@ -1,7 +1,5 @@
-
 import io
 import textwrap
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
@@ -32,7 +30,7 @@ st.caption("Seguimiento de participantes")
 # =====================================================
 # Cambiar esta versión obliga a Streamlit a reconstruir
 # el dataframe cuando se modifica la lógica del tablero.
-CACHE_VERSION = "ranking_periodo_v3"
+CACHE_VERSION = "ranking_periodo_v4_nulos_tecnologia"
 @st.cache_data(ttl=3600)
 def load_data(cache_version):
     """
@@ -94,6 +92,44 @@ def promedio_seguro(df, columna):
     if pd.isna(resultado):
         return 0.0
     return float(resultado)
+
+
+def porcentaje_tecnologia(df, columna):
+    """
+    Calcula el promedio de uso de una tecnología.
+
+    Reglas:
+    - Los valores nulos representan semanas sin actividad
+      y no participan del promedio.
+    - Un cero informado representa actividad sin uso de
+      la tecnología y sí participa del promedio.
+    - Devuelve None cuando no existe ningún dato válido.
+    """
+    if df.empty or columna not in df.columns:
+        return None
+
+    valores = pd.to_numeric(
+        df[columna],
+        errors="coerce",
+    ).dropna()
+
+    if valores.empty:
+        return None
+
+    return float(
+        valores.clip(lower=0, upper=100).mean()
+    )
+
+
+def formatear_porcentaje_tecnologia(valor):
+    """
+    Presenta un indicador tecnológico sin confundir una
+    semana sin actividad con un uso real de cero por ciento.
+    """
+    if valor is None or pd.isna(valor):
+        return "Sin actividad"
+
+    return f"{valor:.1f}%"
 def valor_informado(serie):
     """
     Devuelve una máscara booleana que identifica valores
@@ -230,7 +266,7 @@ def mostrar_resumen_completitud(df):
             f"de {indicadores['total']} "
             f"({indicadores['porcentaje_telefonos']:.1f}%)"
         ),
-    )    
+    )
 def construir_evolucion_semanal(
     df,
     metricas,
@@ -457,8 +493,6 @@ def filtrar_historico_por_poblacion(
     ].copy()
 def mostrar_tabla_vacia(mensaje):
     st.info(mensaje)
-
-
 # =====================================================
 # GENERACIÓN DE INFORMES
 # =====================================================
@@ -470,16 +504,12 @@ METRICAS_ELITE_INFORME = {
     "efficiency_manager": "Efficiency Manager",
     "field_cruise": "Field Cruise",
 }
-
-
 def texto_seguro(valor, predeterminado="Sin informar"):
     """Convierte un valor en texto apto para pantalla e informe."""
     if pd.isna(valor):
         return predeterminado
     texto = str(valor).strip()
     return texto if texto else predeterminado
-
-
 def filtrar_periodo_informe(df_original, periodo):
     """
     Aplica solamente el período elegido.
@@ -499,8 +529,6 @@ def filtrar_periodo_informe(df_original, periodo):
             & (resultado["fecha_fin"] >= desde)
         ].copy()
     return resultado
-
-
 def valor_numerico(registro, columna, predeterminado=0.0):
     """Lee de forma segura una métrica numérica del participante."""
     if columna not in registro.index:
@@ -514,6 +542,23 @@ def valor_numerico(registro, columna, predeterminado=0.0):
     return float(valor)
 
 
+def valor_tecnologia_registro(registro, columna):
+    """
+    Lee una tecnología sin convertir la falta de actividad
+    en un cero artificial.
+    """
+    if columna not in registro.index:
+        return None
+
+    valor = pd.to_numeric(
+        pd.Series([registro[columna]]),
+        errors="coerce",
+    ).iloc[0]
+
+    if pd.isna(valor):
+        return None
+
+    return float(min(max(valor, 0), 100))
 def calcular_posiciones_informe(
     poblacion,
     numero_serie,
@@ -528,7 +573,6 @@ def calcular_posiciones_informe(
             "sucursal": None,
             "total_sucursal": 0,
         }
-
     ranking_general = poblacion.copy()
     ranking_general[columna_score] = pd.to_numeric(
         ranking_general[columna_score],
@@ -539,7 +583,6 @@ def calcular_posiciones_informe(
         .rank(method="min", ascending=False)
         .astype(int)
     )
-
     coincidencia_general = ranking_general[
         ranking_general["numero_serie"] == numero_serie
     ]
@@ -548,7 +591,6 @@ def calcular_posiciones_informe(
         if not coincidencia_general.empty
         else None
     )
-
     ranking_sucursal = ranking_general[
         ranking_general["sucursal"] == sucursal
     ].copy()
@@ -565,15 +607,12 @@ def calcular_posiciones_informe(
         if not coincidencia_sucursal.empty
         else None
     )
-
     return {
         "general": posicion_general,
         "total_general": len(ranking_general),
         "sucursal": posicion_sucursal,
         "total_sucursal": len(ranking_sucursal),
     }
-
-
 def construir_evolucion_participante(
     historico,
     numero_serie,
@@ -609,16 +648,23 @@ def construir_evolucion_participante(
             "ocio_controlable": "Ocio controlable",
         },
     )
-
-
 def recomendaciones_basic(registro, evolucion):
     """Genera recomendaciones Basic a partir del desempeño observado."""
     recomendaciones = []
-    autotrac = valor_numerico(registro, "autotrac")
+    autotrac = valor_tecnologia_registro(
+        registro,
+        "autotrac",
+    )
+    valores_autotrac = pd.Series(dtype="float64")
+    if "AutoTrac" in evolucion.columns:
+        valores_autotrac = pd.to_numeric(
+            evolucion["AutoTrac"],
+            errors="coerce",
+        ).dropna()
 
-    if len(evolucion) >= 2 and "AutoTrac" in evolucion.columns:
-        valor_actual = float(evolucion["AutoTrac"].iloc[-1])
-        valor_anterior = float(evolucion["AutoTrac"].iloc[-2])
+    if len(valores_autotrac) >= 2:
+        valor_actual = float(valores_autotrac.iloc[-1])
+        valor_anterior = float(valores_autotrac.iloc[-2])
         if valor_actual < valor_anterior:
             recomendaciones.append(
                 "Revisar la disminución semanal de AutoTrac y acordar "
@@ -634,11 +680,20 @@ def recomendaciones_basic(registro, evolucion):
                 "Definir un objetivo de mejora semanal para salir del "
                 "nivel estable de utilización de AutoTrac."
             )
+    elif autotrac is None:
+        recomendaciones.append(
+            "No hubo actividad válida de AutoTrac en el período "
+            "seleccionado; esperar una semana con uso del tractor "
+            "antes de evaluar su desempeño."
+        )
     else:
         recomendaciones.append(
             "Continuar incorporando semanas para medir la tendencia "
             "y fijar un objetivo de mejora de AutoTrac."
         )
+
+    if autotrac is None:
+        return recomendaciones
 
     if autotrac < 100:
         recomendaciones.append(
@@ -651,15 +706,19 @@ def recomendaciones_basic(registro, evolucion):
             "su continuidad en las próximas semanas."
         )
     return recomendaciones
-
-
 def recomendaciones_elite(registro):
     """Prioriza los componentes Elite con menor resultado."""
     valores = []
     for columna, nombre in METRICAS_ELITE_INFORME.items():
+        valor = valor_tecnologia_registro(
+            registro,
+            columna,
+        )
+        if valor is None:
+            continue
         valores.append(
             (
-                valor_numerico(registro, columna),
+                valor,
                 nombre,
                 (
                     f"Priorizar {nombre}: revisar su utilización con "
@@ -667,7 +726,6 @@ def recomendaciones_elite(registro):
                 ),
             )
         )
-
     ocio = valor_numerico(registro, "ocio_controlable")
     valores.append(
         (
@@ -678,14 +736,22 @@ def recomendaciones_elite(registro):
         )
     )
     valores.sort(key=lambda item: item[0])
+    if not valores:
+        return [
+            "No hubo actividad tecnológica válida en el período "
+            "seleccionado; esperar nuevos datos antes de definir "
+            "prioridades de adopción."
+        ]
     return [item[2] for item in valores[:3]]
-
-
 def crear_radar_elite(registro):
     """Crea el radar Elite; en ocio, un valor mayor significa mejor control."""
     etiquetas = list(METRICAS_ELITE_INFORME.values())
     valores = [
-        valor_numerico(registro, columna)
+        (
+            valor_tecnologia_registro(registro, columna)
+            if valor_tecnologia_registro(registro, columna) is not None
+            else float("nan")
+        )
         for columna in METRICAS_ELITE_INFORME
     ]
     etiquetas.append("Control del ocio")
@@ -695,7 +761,6 @@ def crear_radar_elite(registro):
             "ocio_controlable",
         )
     )
-
     cantidad = len(etiquetas)
     angulos = [
         indice / float(cantidad) * 2 * 3.141592653589793
@@ -703,7 +768,6 @@ def crear_radar_elite(registro):
     ]
     angulos += angulos[:1]
     valores_cerrados = valores + valores[:1]
-
     figura, eje = plt.subplots(
         figsize=(8, 6),
         subplot_kw={"polar": True},
@@ -736,8 +800,6 @@ def crear_radar_elite(registro):
     )
     figura.tight_layout()
     return figura
-
-
 def crear_figura_evolucion(evolucion, categoria):
     """Crea una figura reutilizable para pantalla y PDF."""
     if evolucion.empty:
@@ -760,15 +822,11 @@ def crear_figura_evolucion(evolucion, categoria):
     figura.autofmt_xdate()
     figura.tight_layout()
     return figura
-
-
 def agregar_texto_pdf(figura, x, y, texto, ancho=92, **kwargs):
     """Agrega texto envuelto a una figura y devuelve la próxima altura."""
     lineas = textwrap.wrap(str(texto), width=ancho) or [""]
-    figura.text(x, y, "\n".join(lineas), **kwargs)
+    figura.text(x, y, "\\n".join(lineas), **kwargs)
     return y - (0.027 * len(lineas))
-
-
 def generar_pdf_informe(
     registro,
     categoria,
@@ -786,7 +844,6 @@ def generar_pdf_informe(
         else "score_elite"
     )
     score = valor_numerico(registro, columna_score)
-
     with PdfPages(buffer) as pdf:
         portada = plt.figure(figsize=(8.27, 11.69))
         portada.patch.set_facecolor("white")
@@ -828,7 +885,6 @@ def generar_pdf_informe(
             )
             portada.text(0.27, y, str(valor), fontsize=10)
             y -= 0.033
-
         y -= 0.015
         portada.text(
             0.08,
@@ -865,7 +921,6 @@ def generar_pdf_informe(
             fontsize=11,
         )
         y -= 0.055
-
         portada.text(
             0.08,
             y,
@@ -878,17 +933,25 @@ def generar_pdf_informe(
             indicadores = [
                 (
                     "AutoTrac",
-                    valor_numerico(registro, "autotrac"),
-                    "%",
+                    formatear_porcentaje_tecnologia(
+                        valor_tecnologia_registro(
+                            registro,
+                            "autotrac",
+                        )
+                    ),
                 ),
-                ("Score Basic", score, ""),
+                ("Score Basic", f"{score:.1f}"),
             ]
         else:
             indicadores = [
                 (
                     nombre,
-                    valor_numerico(registro, columna),
-                    "%",
+                    formatear_porcentaje_tecnologia(
+                        valor_tecnologia_registro(
+                            registro,
+                            columna,
+                        )
+                    ),
                 )
                 for columna, nombre
                 in METRICAS_ELITE_INFORME.items()
@@ -896,23 +959,20 @@ def generar_pdf_informe(
             indicadores.append(
                 (
                     "Ocio controlable",
-                    valor_numerico(
-                        registro,
-                        "ocio_controlable",
-                    ),
-                    "%",
+                    f"{valor_numerico(registro, 'ocio_controlable'):.1f}%",
                 )
             )
-            indicadores.append(("Score Elite", score, ""))
-        for nombre, valor, sufijo in indicadores:
+            indicadores.append(
+                ("Score Elite", f"{score:.1f}")
+            )
+        for nombre, valor in indicadores:
             portada.text(
                 0.10,
                 y,
-                f"• {nombre}: {valor:.1f}{sufijo}",
+                f"• {nombre}: {valor}",
                 fontsize=10,
             )
             y -= 0.028
-
         y -= 0.02
         portada.text(
             0.08,
@@ -944,15 +1004,12 @@ def generar_pdf_informe(
         )
         pdf.savefig(portada, bbox_inches="tight")
         plt.close(portada)
-
         if figura_evolucion is not None:
             pdf.savefig(figura_evolucion, bbox_inches="tight")
         if figura_radar is not None:
             pdf.savefig(figura_radar, bbox_inches="tight")
-
     buffer.seek(0)
     return buffer.getvalue()
-
 # =====================================================
 # EDICIÓN DE PARTICIPANTES
 # =====================================================
@@ -1400,8 +1457,11 @@ with tab_general:
         )
         c3.metric(
             "AutoTrac promedio",
-            (
-                f"{promedio_seguro(basic, 'autotrac'):.1f}%"
+            formatear_porcentaje_tecnologia(
+                porcentaje_tecnologia(
+                    basic,
+                    "autotrac",
+                )
             ),
         )
         c4.metric(
@@ -1473,14 +1533,14 @@ with tab_general:
                 )
         # =================================================
         # RANKING BASIC
-        # =================================================        
+        # =================================================
         st.divider()
-        st.subheader("Ranking Basic")        
+        st.subheader("Ranking Basic")
         if basic.empty:
             mostrar_tabla_vacia(
                 "No hay participantes Basic para "
                 "los filtros seleccionados."
-            )        
+            )
         else:
             ranking_basic = (
                 basic
@@ -1489,7 +1549,7 @@ with tab_general:
                     ascending=False,
                 )
                 .reset_index(drop=True)
-            )        
+            )
             ranking_basic.insert(
                 0,
                 "posición",
@@ -1497,7 +1557,7 @@ with tab_general:
                     1,
                     len(ranking_basic) + 1,
                 ),
-            )        
+            )
             columnas_ranking_basic = [
                 "posición",
                 "organizacion",
@@ -1511,12 +1571,12 @@ with tab_general:
                 "autotrac",
                 "score_basic",
                 "necesidad_intervencion",
-            ]        
+            ]
             faltantes_ranking_basic = [
                 columna
                 for columna in columnas_ranking_basic
                 if columna not in ranking_basic.columns
-            ]        
+            ]
             if faltantes_ranking_basic:
                 st.error(
                     "No se puede construir el ranking Basic. "
@@ -1524,17 +1584,17 @@ with tab_general:
                     + ", ".join(
                         faltantes_ranking_basic
                     )
-                )        
+                )
                 with st.expander(
                     "Columnas disponibles en el ranking Basic"
                 ):
                     st.write(
                         ranking_basic.columns.tolist()
-                    )        
+                    )
             else:
                 tabla_basic = ranking_basic[
                     columnas_ranking_basic
-                ].copy()        
+                ].copy()
                 tabla_basic = tabla_basic.rename(
                     columns={
                         "posición": "Posición",
@@ -1552,7 +1612,7 @@ with tab_general:
                             "Intervención"
                         ),
                     }
-                )        
+                )
                 st.dataframe(
                     tabla_basic,
                     use_container_width=True,
@@ -1645,14 +1705,20 @@ with tab_general:
         )
         c3.metric(
             "AutoTrac",
-            (
-                f"{promedio_seguro(elite, 'autotrac'):.1f}%"
+            formatear_porcentaje_tecnologia(
+                porcentaje_tecnologia(
+                    elite,
+                    "autotrac",
+                )
             ),
         )
         c4.metric(
             "Turn Automation",
-            (
-                f"{promedio_seguro(elite, 'turn_automation'):.1f}%"
+            formatear_porcentaje_tecnologia(
+                porcentaje_tecnologia(
+                    elite,
+                    "turn_automation",
+                )
             ),
         )
         c5.metric(
@@ -1776,14 +1842,14 @@ with tab_general:
                 )
         # =================================================
         # RANKING ELITE
-        # =================================================        
+        # =================================================
         st.divider()
-        st.subheader("Ranking Elite")        
+        st.subheader("Ranking Elite")
         if elite.empty:
             mostrar_tabla_vacia(
                 "No hay participantes Elite para "
                 "los filtros seleccionados."
-            )        
+            )
         else:
             ranking_elite = (
                 elite
@@ -1792,7 +1858,7 @@ with tab_general:
                     ascending=False,
                 )
                 .reset_index(drop=True)
-            )        
+            )
             ranking_elite.insert(
                 0,
                 "posición",
@@ -1800,7 +1866,7 @@ with tab_general:
                     1,
                     len(ranking_elite) + 1,
                 ),
-            )        
+            )
             columnas_ranking_elite = [
                 "posición",
                 "organizacion",
@@ -1820,12 +1886,12 @@ with tab_general:
                 "ocio_controlable",
                 "score_elite",
                 "necesidad_intervencion",
-            ]        
+            ]
             faltantes_ranking_elite = [
                 columna
                 for columna in columnas_ranking_elite
                 if columna not in ranking_elite.columns
-            ]        
+            ]
             if faltantes_ranking_elite:
                 st.error(
                     "No se puede construir el ranking Elite. "
@@ -1833,17 +1899,17 @@ with tab_general:
                     + ", ".join(
                         faltantes_ranking_elite
                     )
-                )        
+                )
                 with st.expander(
                     "Columnas disponibles en el ranking Elite"
                 ):
                     st.write(
                         ranking_elite.columns.tolist()
-                    )        
+                    )
             else:
                 tabla_elite = ranking_elite[
                     columnas_ranking_elite
-                ].copy()        
+                ].copy()
                 tabla_elite = tabla_elite.rename(
                     columns={
                         "posición": "Posición",
@@ -1877,7 +1943,7 @@ with tab_general:
                             "Intervención"
                         ),
                     }
-                )        
+                )
                 st.dataframe(
                     tabla_elite,
                     use_container_width=True,
@@ -1986,7 +2052,6 @@ with tab_informe:
         "Las posiciones se calculan contra participantes de la misma "
         "categoría durante el período seleccionado."
     )
-
     historico_informe = filtrar_periodo_informe(
         df,
         periodo_seleccionado,
@@ -2005,7 +2070,6 @@ with tab_informe:
         [basic_informe, elite_informe],
         ignore_index=True,
     )
-
     if poblacion_informe.empty:
         st.info(
             "No hay participantes disponibles en el período "
@@ -2027,7 +2091,6 @@ with tab_informe:
                 "Escribí cliente, operario o número de serie"
             ),
         ).strip()
-
         if not consulta:
             st.info(
                 "Ingresá un dato en el buscador para seleccionar "
@@ -2052,7 +2115,6 @@ with tab_informe:
             resultados = poblacion_informe[
                 mascara_busqueda
             ].copy()
-
             if resultados.empty:
                 st.warning(
                     "No se encontraron coincidencias para la búsqueda."
@@ -2116,7 +2178,6 @@ with tab_informe:
                         categoria_informe,
                     )
                 )
-
                 st.divider()
                 st.markdown(
                     f"### {texto_seguro(registro.get('cliente'))}"
@@ -2129,7 +2190,6 @@ with tab_informe:
                     f"{texto_seguro(registro.get('sucursal'))} · "
                     f"Categoría: {categoria_informe.title()}"
                 )
-
                 score_informe = valor_numerico(
                     registro,
                     columna_score_informe,
@@ -2165,17 +2225,15 @@ with tab_informe:
                         )
                     ),
                 )
-
                 figura_radar = None
                 figura_evolucion = None
-
                 if categoria_informe == "BASIC":
                     figura_evolucion = crear_figura_evolucion(
                         evolucion_informe,
                         categoria_informe,
                     )
                     st.markdown("#### Indicadores Basic")
-                    ultimo_autotrac = valor_numerico(
+                    ultimo_autotrac = valor_tecnologia_registro(
                         registro,
                         "autotrac",
                     )
@@ -2183,14 +2241,15 @@ with tab_informe:
                     delta_score = None
                     if len(evolucion_informe) >= 2:
                         if "AutoTrac" in evolucion_informe:
-                            delta_autotrac = (
-                                evolucion_informe[
-                                    "AutoTrac"
-                                ].iloc[-1]
-                                - evolucion_informe[
-                                    "AutoTrac"
-                                ].iloc[-2]
-                            )
+                            valores_autotrac = pd.to_numeric(
+                                evolucion_informe["AutoTrac"],
+                                errors="coerce",
+                            ).dropna()
+                            if len(valores_autotrac) >= 2:
+                                delta_autotrac = (
+                                    valores_autotrac.iloc[-1]
+                                    - valores_autotrac.iloc[-2]
+                                )
                         if "Score Basic" in evolucion_informe:
                             delta_score = (
                                 evolucion_informe[
@@ -2203,7 +2262,9 @@ with tab_informe:
                     metrica1, metrica2 = st.columns(2)
                     metrica1.metric(
                         "AutoTrac",
-                        f"{ultimo_autotrac:.1f}%",
+                        formatear_porcentaje_tecnologia(
+                            ultimo_autotrac
+                        ),
                         (
                             f"{delta_autotrac:+.1f} puntos"
                             if delta_autotrac is not None
@@ -2257,8 +2318,11 @@ with tab_informe:
                         ):
                             st.metric(
                                 nombre,
-                                (
-                                    f"{valor_numerico(registro, columna):.1f}%"
+                                formatear_porcentaje_tecnologia(
+                                    valor_tecnologia_registro(
+                                        registro,
+                                        columna,
+                                    )
                                 ),
                             )
                         st.metric(
@@ -2270,11 +2334,9 @@ with tab_informe:
                     recomendaciones = recomendaciones_elite(
                         registro
                     )
-
                 st.markdown("#### Recomendaciones para mejorar")
                 for recomendacion in recomendaciones:
                     st.markdown(f"- {recomendacion}")
-
                 pdf_informe = generar_pdf_informe(
                     registro=registro,
                     categoria=categoria_informe,
@@ -2301,7 +2363,6 @@ with tab_informe:
                     use_container_width=True,
                     type="primary",
                 )
-
                 if figura_evolucion is not None:
                     plt.close(figura_evolucion)
                 if figura_radar is not None:
@@ -2329,32 +2390,32 @@ with tab_clientes:
     ]
     # =================================================
     # CLIENTES BASIC
-    # =================================================    
+    # =================================================
     with basic_clientes:
-        datos_basic = basic_periodo.copy()    
+        datos_basic = basic_periodo.copy()
         columnas_basic_clientes = [
             columna
             for columna in columnas_clientes_deseadas
             if columna in datos_basic.columns
-        ]    
+        ]
         if datos_basic.empty:
             mostrar_tabla_vacia(
                 "No hay clientes Basic para "
                 "los filtros seleccionados."
-            )    
+            )
         else:
             st.subheader(
                 "Participantes Basic"
-            )    
+            )
             mostrar_resumen_completitud(
                 datos_basic
-            )    
+            )
             st.caption(
                 "Un registro se considera completo cuando tiene "
                 "organización, Organization ID, sucursal, número "
                 "de serie, operario, categoría y celular del "
                 "operario."
-            )    
+            )
             st.dataframe(
                 datos_basic[
                     columnas_basic_clientes
@@ -2407,32 +2468,32 @@ with tab_clientes:
             )
     # =================================================
     # CLIENTES ELITE
-    # =================================================    
+    # =================================================
     with elite_clientes:
-        datos_elite = elite_periodo.copy()    
+        datos_elite = elite_periodo.copy()
         columnas_elite_clientes = [
             columna
             for columna in columnas_clientes_deseadas
             if columna in datos_elite.columns
-        ]    
+        ]
         if datos_elite.empty:
             mostrar_tabla_vacia(
                 "No hay clientes Elite para "
                 "los filtros seleccionados."
-            )    
+            )
         else:
             st.subheader(
                 "Participantes Elite"
-            )    
+            )
             mostrar_resumen_completitud(
                 datos_elite
-            )    
+            )
             st.caption(
                 "Un registro se considera completo cuando tiene "
                 "organización, Organization ID, sucursal, número "
                 "de serie, operario, categoría y celular del "
                 "operario."
-            )    
+            )
             st.dataframe(
                 datos_elite[
                     columnas_elite_clientes
@@ -2529,16 +2590,16 @@ with tab_clientes:
         )
         # =============================================
         # EDITAR MÁQUINA
-        # =============================================        
+        # =============================================
         with editar_tab:
             if clientes_edicion.empty:
                 st.info(
                     "No hay máquinas disponibles para editar."
-                )        
+                )
             else:
                 st.markdown(
                     "#### Buscar máquina"
-                )        
+                )
                 texto_busqueda = st.text_input(
                     (
                         "Buscar por número de serie, cliente, "
@@ -2549,12 +2610,12 @@ with tab_clientes:
                         "organización u operario"
                     ),
                     key="buscar_maquina_edicion",
-                )        
+                )
                 clientes_resultado = (
                     clientes_edicion.copy()
-                )        
+                )
                 if texto_busqueda.strip():
-                    busqueda = texto_busqueda.strip()        
+                    busqueda = texto_busqueda.strip()
                     columnas_busqueda = [
                         columna
                         for columna in [
@@ -2564,12 +2625,12 @@ with tab_clientes:
                             "operario",
                         ]
                         if columna in clientes_resultado.columns
-                    ]        
+                    ]
                     mascara_busqueda = pd.Series(
                         False,
                         index=clientes_resultado.index,
                         dtype="bool",
-                    )        
+                    )
                     for columna in columnas_busqueda:
                         mascara_busqueda |= (
                             clientes_resultado[columna]
@@ -2581,49 +2642,49 @@ with tab_clientes:
                                 regex=False,
                                 na=False,
                             )
-                        )        
+                        )
                     clientes_resultado = (
                         clientes_resultado[
                             mascara_busqueda
                         ]
                         .copy()
-                    )        
+                    )
                 if not texto_busqueda.strip():
                     st.info(
                         "Escribí un número de serie, nombre del "
                         "cliente, organización u operario para "
                         "buscar una máquina."
-                    )        
+                    )
                 elif clientes_resultado.empty:
                     st.warning(
                         "No se encontraron máquinas que coincidan "
                         "con la búsqueda."
-                    )        
+                    )
                 else:
                     st.caption(
                         f"{len(clientes_resultado)} "
                         "coincidencia(s)"
-                    )        
-                    opciones_edicion = {}        
+                    )
+                    opciones_edicion = {}
                     for indice, fila in (
                         clientes_resultado.iterrows()
                     ):
                         serie = valor_registro(
                             fila,
                             "numero_serie",
-                        )        
+                        )
                         cliente = valor_registro(
                             fila,
                             "cliente",
-                        )        
+                        )
                         organizacion = valor_registro(
                             fila,
                             "organizacion",
-                        )        
+                        )
                         operario = valor_registro(
                             fila,
                             "operario",
-                        )        
+                        )
                         etiqueta = " · ".join(
                             [
                                 serie or "Sin serie",
@@ -2633,40 +2694,40 @@ with tab_clientes:
                                 ),
                                 operario or "Sin operario",
                             ]
-                        )        
-                        etiqueta_unica = etiqueta        
+                        )
+                        etiqueta_unica = etiqueta
                         if etiqueta_unica in opciones_edicion:
                             etiqueta_unica = (
                                 f"{etiqueta} · Registro {indice}"
-                            )        
+                            )
                         opciones_edicion[
                             etiqueta_unica
-                        ] = indice        
+                        ] = indice
                     etiqueta_seleccionada = st.selectbox(
                         "Seleccionar una máquina",
                         options=list(
                             opciones_edicion.keys()
                         ),
                         key="resultado_busqueda_edicion",
-                    )        
+                    )
                     indice_registro = opciones_edicion[
                         etiqueta_seleccionada
-                    ]        
+                    ]
                     registro = clientes_edicion.loc[
                         indice_registro
-                    ].copy()        
+                    ].copy()
                     serie_editar = valor_registro(
                         registro,
                         "numero_serie",
-                    )        
-                    st.divider()        
+                    )
+                    st.divider()
                     with st.form(
                         key=f"form_editar_{indice_registro}"
                     ):
                         st.markdown(
                             "#### Datos de inscripción"
-                        )        
-                        columna_1, columna_2 = st.columns(2)        
+                        )
+                        columna_1, columna_2 = st.columns(2)
                         with columna_1:
                             numero_serie_editado = st.text_input(
                                 "Número de serie",
@@ -2674,35 +2735,35 @@ with tab_clientes:
                                     registro,
                                     "numero_serie",
                                 ),
-                            )        
+                            )
                             organizacion_editada = st.text_input(
                                 "Organización",
                                 value=valor_registro(
                                     registro,
                                     "organizacion",
                                 ),
-                            )        
+                            )
                             org_id_editado = st.text_input(
                                 "Organization ID",
                                 value=valor_registro(
                                     registro,
                                     "org_id",
                                 ),
-                            )        
+                            )
                             sucursal_editada = st.text_input(
                                 "Sucursal",
                                 value=valor_registro(
                                     registro,
                                     "sucursal",
                                 ),
-                            )        
+                            )
                             operario_editado = st.text_input(
                                 "Nombre del operario",
                                 value=valor_registro(
                                     registro,
                                     "operario",
                                 ),
-                            )        
+                            )
                             telefono_operario_editado = (
                                 st.text_input(
                                     "Teléfono del operario",
@@ -2711,7 +2772,7 @@ with tab_clientes:
                                         "telefono_operario",
                                     ),
                                 )
-                            )        
+                            )
                         with columna_2:
                             cliente_editado = st.text_input(
                                 "Nombre del cliente",
@@ -2719,7 +2780,7 @@ with tab_clientes:
                                     registro,
                                     "cliente",
                                 ),
-                            )        
+                            )
                             telefono_cliente_editado = (
                                 st.text_input(
                                     "Teléfono del cliente",
@@ -2728,39 +2789,39 @@ with tab_clientes:
                                         "telefono_cliente",
                                     ),
                                 )
-                            )        
+                            )
                             pais_editado = st.text_input(
                                 "País",
                                 value=valor_registro(
                                     registro,
                                     "pais",
                                 ),
-                            )        
+                            )
                             provincia_editada = st.text_input(
                                 "Provincia",
                                 value=valor_registro(
                                     registro,
                                     "provincia",
                                 ),
-                            )        
+                            )
                             ciudad_editada = st.text_input(
                                 "Ciudad",
                                 value=valor_registro(
                                     registro,
                                     "ciudad",
                                 ),
-                            )        
+                            )
                             categoria_actual = (
                                 valor_registro(
                                     registro,
                                     "categoria",
                                 )
-                            )        
+                            )
                             indice_categoria = (
                                 1
                                 if categoria_actual == "ELITE"
                                 else 0
-                            )        
+                            )
                             categoria_editada = st.selectbox(
                                 "Categoría",
                                 options=[
@@ -2768,29 +2829,29 @@ with tab_clientes:
                                     "ELITE",
                                 ],
                                 index=indice_categoria,
-                            )        
+                            )
                         guardar_edicion = (
                             st.form_submit_button(
                                 "Guardar cambios",
                                 type="primary",
                                 use_container_width=True,
                             )
-                        )        
+                        )
                     if guardar_edicion:
                         serie_nueva = (
                             normalizar_numero_serie_valor(
                                 numero_serie_editado
                             )
-                        )        
+                        )
                         if not serie_nueva:
                             st.error(
                                 "El número de serie es obligatorio."
-                            )        
+                            )
                         else:
                             mascara_otras_filas = (
                                 clientes_edicion.index
                                 != indice_registro
-                            )        
+                            )
                             serie_duplicada = (
                                 clientes_edicion.loc[
                                     mascara_otras_filas,
@@ -2798,65 +2859,65 @@ with tab_clientes:
                                 ]
                                 .eq(serie_nueva)
                                 .any()
-                            )        
+                            )
                             if serie_duplicada:
                                 st.error(
                                     "Ya existe otra máquina con "
                                     "ese número de serie."
-                                )        
+                                )
                             else:
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "numero_serie",
-                                ] = serie_nueva        
+                                ] = serie_nueva
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "organizacion",
-                                ] = organizacion_editada.strip()        
+                                ] = organizacion_editada.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "org_id",
-                                ] = org_id_editado.strip()        
+                                ] = org_id_editado.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "sucursal",
-                                ] = sucursal_editada.strip()        
+                                ] = sucursal_editada.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "operario",
-                                ] = operario_editado.strip()        
+                                ] = operario_editado.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "telefono_operario",
                                 ] = (
                                     telefono_operario_editado.strip()
-                                )        
+                                )
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "cliente",
-                                ] = cliente_editado.strip()        
+                                ] = cliente_editado.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "telefono_cliente",
                                 ] = (
                                     telefono_cliente_editado.strip()
-                                )        
+                                )
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "pais",
-                                ] = pais_editado.strip()        
+                                ] = pais_editado.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "provincia",
-                                ] = provincia_editada.strip()        
+                                ] = provincia_editada.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "ciudad",
-                                ] = ciudad_editada.strip()        
+                                ] = ciudad_editada.strip()
                                 clientes_edicion.loc[
                                     indice_registro,
                                     "categoria",
-                                ] = categoria_editada        
+                                ] = categoria_editada
                                 try:
                                     guardar_cambios_clientes(
                                         df_clientes=(
@@ -2868,12 +2929,12 @@ with tab_clientes:
                                             "Actualiza participante "
                                             f"{serie_editar}"
                                         ),
-                                    )        
+                                    )
                                 except Exception as error:
                                     st.error(
                                         "No se pudieron guardar "
                                         "los cambios."
-                                    )        
+                                    )
                                     with st.expander(
                                         "Detalle técnico"
                                     ):
