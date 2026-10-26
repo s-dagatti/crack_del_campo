@@ -30,7 +30,7 @@ st.caption("Seguimiento de participantes")
 # =====================================================
 # Cambiar esta versión obliga a Streamlit a reconstruir
 # el dataframe cuando se modifica la lógica del tablero.
-CACHE_VERSION = "ranking_periodo_v4_nulos_tecnologia"
+CACHE_VERSION = "ranking_periodo_v5_scores_sin_nulos"
 @st.cache_data(ttl=3600)
 def load_data(cache_version):
     """
@@ -74,7 +74,7 @@ def load_data(cache_version):
             }
         )
     )
-    datos = calcular_scores(datos)
+    datos = calcular_scores_ajustados(datos)
     return datos
 def promedio_seguro(df, columna):
     """
@@ -130,6 +130,146 @@ def formatear_porcentaje_tecnologia(valor):
         return "Sin actividad"
 
     return f"{valor:.1f}%"
+
+
+def formatear_score_tecnologia(df, columna):
+    """
+    Formatea un score calculado con componentes tecnológicos.
+    Evita mostrar 0 cuando todo el período está sin actividad.
+    """
+    valor = porcentaje_tecnologia(df, columna)
+
+    if valor is None:
+        return "Sin actividad"
+
+    return f"{valor:.1f}"
+
+
+METRICAS_TECNOLOGIA_ELITE = [
+    "autotrac",
+    "turn_automation",
+    "autopath",
+    "implement_guidance",
+    "efficiency_manager",
+    "field_cruise",
+]
+
+
+def ajustar_scores_tecnologia(df):
+    """
+    Ajusta los scores sin convertir tecnologías nulas en cero.
+
+    Reglas:
+    - BASIC: score_basic es exactamente igual a AutoTrac.
+    - ELITE: score_elite es el promedio de los componentes
+      tecnológicos realmente informados.
+    - El control del ocio participa como 100 - ocio_controlable
+      solamente cuando ocio_controlable está informado.
+    - Un cero real sí participa del score.
+    - Si no existe ningún componente válido, el score queda nulo.
+    """
+    if df.empty:
+        return df.copy()
+
+    resultado = df.copy()
+
+    if "categoria" not in resultado.columns:
+        return resultado
+
+    categorias = (
+        resultado["categoria"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    mascara_basic = categorias.eq("BASIC")
+    mascara_elite = categorias.eq("ELITE")
+
+    # BASIC: el score debe coincidir exactamente con AutoTrac.
+    if "autotrac" in resultado.columns:
+        autotrac = pd.to_numeric(
+            resultado["autotrac"],
+            errors="coerce",
+        ).clip(lower=0, upper=100)
+
+        resultado.loc[
+            mascara_basic,
+            "score_basic",
+        ] = autotrac.loc[mascara_basic]
+
+    # ELITE: cada componente nulo se excluye del denominador.
+    componentes_elite = pd.DataFrame(
+        index=resultado.index,
+    )
+
+    for columna in METRICAS_TECNOLOGIA_ELITE:
+        if columna in resultado.columns:
+            componentes_elite[columna] = pd.to_numeric(
+                resultado[columna],
+                errors="coerce",
+            ).clip(lower=0, upper=100)
+
+    if "ocio_controlable" in resultado.columns:
+        ocio_controlable = pd.to_numeric(
+            resultado["ocio_controlable"],
+            errors="coerce",
+        ).clip(lower=0, upper=100)
+
+        componentes_elite["control_ocio"] = (
+            100 - ocio_controlable
+        )
+
+    if not componentes_elite.empty:
+        score_elite = componentes_elite.mean(
+            axis=1,
+            skipna=True,
+        )
+
+        # DataFrame.mean devuelve NaN cuando todos los componentes
+        # de una fila son nulos, que es el comportamiento buscado.
+        resultado.loc[
+            mascara_elite,
+            "score_elite",
+        ] = score_elite.loc[mascara_elite]
+
+    return resultado
+
+
+def calcular_scores_ajustados(df):
+    """
+    Ejecuta la lógica general de scores y luego aplica las reglas
+    tecnológicas del tablero sin perder los valores nulos originales.
+
+    Se restauran las métricas desde el dataframe de entrada por si
+    calcular_scores convierte internamente algún nulo en cero.
+    """
+    if df.empty:
+        return df.copy()
+
+    datos_originales = df.copy()
+    resultado = calcular_scores(
+        df.copy()
+    )
+
+    columnas_a_preservar = (
+        METRICAS_TECNOLOGIA_ELITE
+        + ["ocio_controlable"]
+    )
+
+    for columna in columnas_a_preservar:
+        if columna in datos_originales.columns:
+            resultado[columna] = pd.to_numeric(
+                datos_originales[columna],
+                errors="coerce",
+            ).clip(lower=0, upper=100)
+
+    return ajustar_scores_tecnologia(
+        resultado
+    )
+
+
 def valor_informado(serie):
     """
     Devuelve una máscara booleana que identifica valores
@@ -457,7 +597,7 @@ def consolidar_periodo(df):
     )
     # Recalcula los scores y la intervención utilizando
     # los promedios del período.
-    consolidado = calcular_scores(
+    consolidado = calcular_scores_ajustados(
         consolidado
     )
     return consolidado
@@ -1466,8 +1606,9 @@ with tab_general:
         )
         c4.metric(
             "Score Basic",
-            (
-                f"{promedio_seguro(basic, 'score_basic'):.1f}"
+            formatear_score_tecnologia(
+                basic,
+                "score_basic",
             ),
         )
         # =================================================
@@ -1699,8 +1840,9 @@ with tab_general:
         )
         c2.metric(
             "Score Elite",
-            (
-                f"{promedio_seguro(elite, 'score_elite'):.1f}"
+            formatear_score_tecnologia(
+                elite,
+                "score_elite",
             ),
         )
         c3.metric(
